@@ -39,7 +39,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-export default function RosterGen() {
+export default function App() {
   // --- State ---
   const [currentDate, setCurrentDate] = useState(new Date());
   const [doctors, setDoctors] = useState([]);
