@@ -51,7 +51,7 @@ export default function RosterGen() {
   // Modals state
   const [editingDay, setEditingDay] = useState(null);
   const [showDocManager, setShowDocManager] = useState(false);
-  const [pickingColorFor, setPickingColorFor] = useState(null); // ID of doc being edited
+  const [pickingColorFor, setPickingColorFor] = useState(null); 
   
   const [syncStatus, setSyncStatus] = useState('Syncing...');
   const exportRef = useRef(null);
@@ -105,6 +105,21 @@ export default function RosterGen() {
     return { startDate, endDate, dates };
   }, [currentDate]);
 
+  // Helper to calculate stats strictly based on current view
+  const getDocStatsInCycle = (docId) => {
+    let count = 0;
+    let suns = 0;
+    cycle.dates.forEach(date => {
+      const key = date.toISOString().split('T')[0];
+      const assigned = assignments[key] || [];
+      if (assigned.includes(docId)) {
+        count++;
+        if (date.getDay() === 0) suns++;
+      }
+    });
+    return { count, suns };
+  };
+
   const getSundayUnit = (date) => {
     if (date.getDay() !== 0) return "";
     const ref = new Date(2026, 1, 1);
@@ -142,7 +157,6 @@ export default function RosterGen() {
       if (current.length >= 3) return; // Max 3 limit
       current = [...current, docId];
     }
-    
     setAssignments({ ...assignments, [dateKey]: current });
   };
 
@@ -151,6 +165,8 @@ export default function RosterGen() {
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     let offset = cycle.dates[0].getDay() - 1;
     if (offset < 0) offset = 6;
+
+    const todayStr = new Date().toDateString();
 
     return (
       <div className={cn("grid grid-cols-7 gap-px md:gap-0.5", isExport ? "bg-gray-300" : "bg-white/10 dark:bg-black/10 backdrop-blur-sm")}>
@@ -161,6 +177,8 @@ export default function RosterGen() {
         {cycle.dates.map(date => {
           const dateKey = date.toISOString().split('T')[0];
           const isSun = date.getDay() === 0;
+          const isToday = !isExport && date.toDateString() === todayStr;
+          
           const assignedDocs = (assignments[dateKey] || [])
             .map(id => doctors.find(d => d.id === id)).filter(Boolean)
             .sort((a, b) => CATEGORIES[a.category].rank - CATEGORIES[b.category].rank);
@@ -173,7 +191,8 @@ export default function RosterGen() {
               className={cn(
                 "min-h-[85px] p-0.5 flex flex-col items-center relative overflow-hidden transition-all duration-200",
                 isSun ? "bg-red-50/70 dark:bg-red-900/20" : "bg-white/90 dark:bg-gray-900/80",
-                !isExport && !isLocked && "cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:shadow-inner"
+                !isExport && !isLocked && "cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:shadow-inner",
+                isToday && "ring-2 ring-amber-400 z-10 shadow-lg" // Present day highlight
               )}
             >
               <span className={cn("text-sm leading-none mb-0.5 select-none", isSun ? "text-red-500 font-bold" : "text-gray-600 dark:text-gray-400")} style={{ fontFamily: '"Source Code Pro", monospace' }}>
@@ -211,8 +230,7 @@ export default function RosterGen() {
               <div className={cn("text-[10px] font-bold uppercase mb-1", cat.color)}>{cat.label}</div>
               <div className="grid grid-cols-4 gap-2">
                 {doctors.filter(d => d.category === catKey).map(doc => {
-                  const count = Object.values(assignments).filter(a => a.includes(doc.id)).length;
-                  const suns = Object.entries(assignments).filter(([k, v]) => v.includes(doc.id) && new Date(k).getDay() === 0).length;
+                  const { count, suns } = getDocStatsInCycle(doc.id); // Fixed Stats Logic
                   if (count === 0) return null;
                   return (
                     <div key={doc.id} className="flex flex-col items-center bg-gray-50 dark:bg-gray-700/50 rounded p-1 border border-gray-100 dark:border-gray-700">
@@ -291,7 +309,10 @@ export default function RosterGen() {
           <div>
             <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block mb-1">Current Cycle</span>
             <div className="flex items-center gap-2 bg-white dark:bg-gray-800 rounded-full p-1 pl-3 pr-1 shadow-sm border border-gray-200 dark:border-gray-700">
-               <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{cycle.startDate.toLocaleString('default', { month: 'short' })}</span>
+               <span className="text-sm font-bold text-gray-700 dark:text-gray-200">
+                  {/* Updated: Showing Month Year */}
+                  {cycle.startDate.toLocaleString('default', { month: 'short', year: 'numeric' })}
+               </span>
                <div className="flex gap-1">
                  <button onClick={() => { const d = new Date(currentDate); d.setMonth(d.getMonth()-1); setCurrentDate(d); }} className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"><ChevronLeft size={16}/></button>
                  <button onClick={() => { const d = new Date(currentDate); d.setMonth(d.getMonth()+1); setCurrentDate(d); }} className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"><ChevronRight size={16}/></button>
@@ -306,6 +327,7 @@ export default function RosterGen() {
                <h2 className="text-white font-bold text-lg tracking-wide drop-shadow-md">
                  {cycle.startDate.toLocaleString('default', { month: 'long' })} <span className="opacity-70 mx-1">/</span> {cycle.endDate.toLocaleString('default', { month: 'long' })}
                </h2>
+               <p className="text-[10px] text-white/80 font-mono opacity-80">{cycle.endDate.getFullYear()}</p>
             </div>
             {renderCalendarGrid()}
         </div>
@@ -350,7 +372,6 @@ export default function RosterGen() {
         <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white dark:bg-gray-900 w-full max-w-sm rounded-2xl shadow-2xl flex flex-col max-h-[85vh] border border-gray-100 dark:border-gray-800 relative">
             
-            {/* Color Picker Overlay */}
             {pickingColorFor && (
                <div className="absolute inset-0 z-10 bg-white/95 dark:bg-gray-900/95 rounded-2xl flex flex-col items-center justify-center p-6">
                   <h3 className="text-sm font-bold uppercase mb-4 text-gray-500">Select Color</h3>
@@ -395,7 +416,6 @@ export default function RosterGen() {
                         value={doc.name}
                         onChange={(e) => setDoctors(doctors.map(d => d.id === doc.id ? {...d, name: e.target.value} : d))}
                       />
-                      {/* Delete button always visible now */}
                       <button onClick={() => setDoctors(doctors.filter(d => d.id !== doc.id))} className="text-gray-300 hover:text-red-500 p-1"><Trash2 size={16}/></button>
                     </div>
                   ))}
@@ -409,52 +429,54 @@ export default function RosterGen() {
         </div>
       )}
 
-      {/* --- Entry Editor Modal (Restored Select Functionality) --- */}
+      {/* --- Entry Editor Modal (Updated: Dark Mode + 2 Columns) --- */}
       {editingDay && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-gray-900 w-full max-w-[340px] rounded-2xl shadow-2xl border border-gray-100 flex flex-col max-h-[90vh]">
-             <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50 rounded-t-2xl">
+          <div className="bg-white dark:bg-gray-900 w-full max-w-md rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-800 flex flex-col max-h-[90vh]">
+             <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50 rounded-t-2xl">
                 <div>
                    <h4 className="font-bold text-lg">{editingDay.dateObj.getDate()} {editingDay.dateObj.toLocaleString('default',{month:'short'})}</h4>
                    <p className="text-xs text-gray-400 font-bold uppercase">{editingDay.dateObj.toLocaleString('default',{weekday:'long'})}</p>
                 </div>
-                <button onClick={() => {saveToCloud(); setEditingDay(null);}} className="bg-gray-100 p-1 rounded-full"><Check size={18} className="text-green-600"/></button>
+                <button onClick={() => {saveToCloud(); setEditingDay(null);}} className="bg-gray-100 dark:bg-gray-700 p-1 rounded-full"><Check size={18} className="text-green-600 dark:text-green-400"/></button>
              </div>
              
              <div className="p-4 overflow-y-auto space-y-4">
                 <div>
                   <input 
-                      className="w-full p-2 bg-gray-50 dark:bg-black border border-gray-200 rounded-lg text-sm outline-none focus:ring-1 ring-blue-500" 
+                      className="w-full p-2 bg-gray-50 dark:bg-black border border-gray-200 dark:border-gray-700 rounded-lg text-sm outline-none focus:ring-1 ring-blue-500" 
                       placeholder={getSundayUnit(editingDay.dateObj) || "Add a note..."}
                       value={notes[editingDay.dateKey] || ''}
                       onChange={(e) => setNotes({...notes, [editingDay.dateKey]: e.target.value})}
                   />
                 </div>
 
-                {Object.entries(CATEGORIES).map(([catKey, cat]) => (
-                  <div key={catKey}>
-                    <div className={cn("text-[10px] font-black uppercase mb-1 tracking-wider", cat.color)}>{cat.label}</div>
-                    <div className="space-y-1">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {Object.entries(CATEGORIES).map(([catKey, cat]) => (
+                    <div key={catKey} className="space-y-1">
+                      <div className={cn("text-[10px] font-black uppercase mb-1 tracking-wider", cat.color)}>{cat.label}</div>
                       {doctors.filter(d => d.category === catKey).map(doc => {
                         const isSelected = assignments[editingDay.dateKey]?.includes(doc.id);
                         return (
                           <button key={doc.id} onClick={() => toggleDocAssignment(doc.id)}
                             className={cn("w-full flex items-center justify-between p-2 rounded-lg border transition-all", 
-                              isSelected ? "bg-blue-50 border-blue-200" : "bg-white border-transparent hover:bg-gray-50")}>
-                            <div className="flex items-center gap-2">
-                              <div className="w-2.5 h-2.5 rounded-full" style={{backgroundColor: doc.color}}/>
-                              <span className="text-xs font-bold text-gray-700">{doc.name}</span>
+                              isSelected 
+                                ? "bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800" 
+                                : "bg-white dark:bg-gray-800 border-transparent hover:bg-gray-50 dark:hover:bg-gray-700")}>
+                            <div className="flex items-center gap-2 overflow-hidden">
+                              <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{backgroundColor: doc.color}}/>
+                              <span className="text-xs font-bold text-gray-700 dark:text-gray-300 truncate">{doc.name}</span>
                             </div>
-                            {isSelected && <Check size={14} className="text-blue-600"/>}
+                            {isSelected && <Check size={14} className="text-blue-600 dark:text-blue-400"/>}
                           </button>
                         )
                       })}
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
              </div>
-             <div className="p-3 border-t border-gray-100 bg-gray-50/50 rounded-b-2xl">
-               <button onClick={() => { saveToCloud(); setEditingDay(null); }} className="w-full bg-black text-white py-2 rounded-lg font-bold text-xs">DONE</button>
+             <div className="p-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 rounded-b-2xl">
+               <button onClick={() => { saveToCloud(); setEditingDay(null); }} className="w-full bg-black dark:bg-white text-white dark:text-black py-2 rounded-lg font-bold text-xs">DONE</button>
              </div>
           </div>
         </div>
