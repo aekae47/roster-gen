@@ -36,6 +36,14 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
+// Helper for consistent local date keys (Fixes the Monday/TimeZone bug)
+const formatDateKey = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export default function RosterGen() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [doctors, setDoctors] = useState([]);
@@ -100,7 +108,7 @@ export default function RosterGen() {
     let count = 0;
     let suns = 0;
     cycle.dates.forEach(date => {
-      const key = date.toISOString().split('T')[0];
+      const key = formatDateKey(date);
       const assigned = assignments[key] || [];
       if (assigned.includes(docId)) {
         count++;
@@ -153,7 +161,7 @@ export default function RosterGen() {
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     let offset = cycle.dates[0].getDay() - 1;
     if (offset < 0) offset = 6;
-    const todayStr = new Date().toDateString();
+    const todayStr = formatDateKey(new Date());
 
     return (
       <div className={cn("grid grid-cols-7 gap-px md:gap-0.5", isExport ? "bg-gray-300" : "bg-white/10 dark:bg-black/10 backdrop-blur-sm")}>
@@ -162,9 +170,9 @@ export default function RosterGen() {
         ))}
         {Array(offset).fill(0).map((_, i) => <div key={`off-${i}`} className="bg-white/50 dark:bg-darkcard/50"/>)}
         {cycle.dates.map(date => {
-          const dateKey = date.toISOString().split('T')[0];
+          const dateKey = formatDateKey(date);
           const isSun = date.getDay() === 0;
-          const isToday = !isExport && date.toDateString() === todayStr;
+          const isToday = !isExport && dateKey === todayStr;
           const assignedDocs = (assignments[dateKey] || [])
             .map(id => doctors.find(d => d.id === id)).filter(Boolean)
             .sort((a, b) => CATEGORIES[a.category].rank - CATEGORIES[b.category].rank);
@@ -209,15 +217,8 @@ export default function RosterGen() {
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
         .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; }
       `}</style>
-
-      {/* Ambient Background */}
-      <div className="fixed inset-0 z-0 pointer-events-none opacity-40 dark:opacity-20">
-          <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-purple-300 rounded-full mix-blend-multiply filter blur-3xl animate-blob"></div>
-          <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-yellow-300 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-2000"></div>
-      </div>
       
-      {/* Header */}
-      <header className="fixed top-0 w-full z-40 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-white/20 dark:border-gray-700 shadow-sm px-3 py-2 flex justify-between items-center transition-all">
+      <header className="fixed top-0 w-full z-40 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-white/20 dark:border-gray-700 shadow-sm px-3 py-2 flex justify-between items-center">
         <div className="flex items-center gap-3">
           <div className="bg-gradient-to-tr from-blue-600 to-purple-600 text-white p-1.5 rounded-lg shadow-lg">
              <BarChart3 size={18} /> 
@@ -235,7 +236,6 @@ export default function RosterGen() {
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="relative z-10 pt-16 pb-24 px-2 max-w-5xl mx-auto">
         <div className="flex justify-between items-end mb-4 px-1">
           <div>
@@ -264,17 +264,18 @@ export default function RosterGen() {
         </div>
 
         {!isLocked && (
-          <div className="mt-6">
-            <div className="text-[10px] font-bold uppercase text-gray-400 mb-2 px-1">Quick Assign</div>
-            <div className="flex gap-2 overflow-x-auto pb-4 px-1 scrollbar-hide">
+          <div className="mt-6 px-1">
+            <div className="text-[10px] font-bold uppercase text-gray-400 mb-2">Quick Assign Tools</div>
+            {/* TWO ROW GRID - NO SCROLLING */}
+            <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2">
                <button onClick={() => setSelectedTool(selectedTool === 'eraser' ? null : 'eraser')}
-                className={cn("flex-shrink-0 w-14 h-14 rounded-xl border-2 flex flex-col items-center justify-center transition-all shadow-sm", selectedTool === 'eraser' ? "border-red-500 bg-red-50 text-red-600 scale-105" : "border-transparent bg-white dark:bg-gray-800 text-gray-400")}>
+                className={cn("w-full aspect-square rounded-xl border-2 flex flex-col items-center justify-center transition-all shadow-sm", selectedTool === 'eraser' ? "border-red-500 bg-red-50 text-red-600 scale-105" : "border-transparent bg-white dark:bg-gray-800 text-gray-400")}>
                 <Eraser size={20} /><span className="text-[8px] font-black mt-1">CLEAR</span>
               </button>
               {doctors.map(doc => (
                 <button key={doc.id} onClick={() => setSelectedTool(selectedTool === doc.id ? null : doc.id)}
                   style={{ backgroundColor: doc.color }}
-                  className={cn("flex-shrink-0 w-14 h-14 rounded-xl border-2 p-1 transition-all shadow-sm flex flex-col items-center justify-center relative group", selectedTool === doc.id ? "border-blue-600 scale-105 shadow-lg z-10" : "border-transparent hover:scale-105")}>
+                  className={cn("w-full aspect-square rounded-xl border-2 p-1 transition-all shadow-sm flex flex-col items-center justify-center relative group", selectedTool === doc.id ? "border-blue-600 scale-105 shadow-lg z-10" : "border-transparent hover:scale-105")}>
                   <span className="text-[9px] font-bold text-gray-900 leading-tight text-center line-clamp-2 w-full break-words" style={{ fontFamily: '"PT Sans Narrow"' }}>{doc.name}</span>
                 </button>
               ))}
@@ -315,7 +316,7 @@ export default function RosterGen() {
             </div>
             <div className="space-y-1 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
               {doctors.filter(d => d.category === 'faculty').map(doc => {
-                 const dates = cycle.dates.filter(d => assignments[d.toISOString().split('T')[0]]?.includes(doc.id)).map(d => d.getDate());
+                 const dates = cycle.dates.filter(d => assignments[formatDateKey(d)]?.includes(doc.id)).map(d => d.getDate());
                  if (dates.length === 0) return null;
                  return (
                    <div key={doc.id} className="flex text-xs py-1 border-b border-dashed border-gray-200 dark:border-gray-700 last:border-0">
@@ -356,15 +357,17 @@ export default function RosterGen() {
                     <span className={cn("text-[10px] font-black uppercase tracking-widest", CATEGORIES[catKey].color)}>{CATEGORIES[catKey].label}</span>
                     <button onClick={() => {
                         setDoctors([...doctors, { id: Date.now(), name: "Dr. Name", category: catKey, color: PASTEL_COLORS[doctors.length % PASTEL_COLORS.length] }]);
-                    }} className="text-blue-500 text-[10px] font-bold bg-blue-50 px-2 py-0.5 rounded">+ ADD</button>
+                    }} className="text-blue-500 text-[10px] font-bold bg-blue-50 px-2 py-0.5 rounded transition-all">+ ADD</button>
                   </div>
-                  {/* TWO COLUMN STAFF LIST EVEN ON MOBILE */}
                   <div className="grid grid-cols-2 gap-2">
                     {doctors.filter(d => d.category === catKey).map(doc => (
                       <div key={doc.id} className="flex gap-1.5 items-center bg-gray-50 dark:bg-gray-800/50 p-1.5 rounded-lg border border-gray-100 dark:border-gray-700">
                         <button onClick={() => setPickingColorFor(doc.id)} className="w-5 h-5 rounded-full shadow-sm border border-black/10 flex-shrink-0" style={{ backgroundColor: doc.color }}><Palette size={10} className="mx-auto opacity-50"/></button>
-                        <input className="flex-grow text-[11px] bg-transparent border-none p-0 outline-none font-medium truncate" value={doc.name} onChange={(e) => setDoctors(doctors.map(d => d.id === doc.id ? {...d, name: e.target.value} : d))} />
-                        <button onClick={() => setDoctors(doctors.filter(d => d.id !== doc.id))} className="text-gray-400 hover:text-red-500"><Trash2 size={14}/></button>
+                        {/* FIX: FIXED DELETE BUTTON POSITION - TEXT HIDES UNDERNEATH */}
+                        <div className="flex-grow min-w-0 flex items-center gap-1 overflow-hidden">
+                           <input className="flex-grow min-w-0 text-[11px] bg-transparent border-none p-0 outline-none font-medium truncate" value={doc.name} onChange={(e) => setDoctors(doctors.map(d => d.id === doc.id ? {...d, name: e.target.value} : d))} />
+                           <button onClick={() => setDoctors(doctors.filter(d => d.id !== doc.id))} className="text-gray-400 hover:text-red-500 flex-shrink-0"><Trash2 size={14}/></button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -372,7 +375,7 @@ export default function RosterGen() {
               ))}
             </div>
             <div className="p-4 border-t border-gray-100 dark:border-gray-800">
-              <button onClick={() => { saveToCloud({ doctors }); setShowDocManager(false); }} className="w-full bg-blue-600 text-white py-2.5 rounded-xl font-bold text-xs">SAVE CHANGES</button>
+              <button onClick={() => { saveToCloud({ doctors }); setShowDocManager(false); }} className="w-full bg-blue-600 text-white py-2.5 rounded-xl font-bold text-xs uppercase shadow-lg shadow-blue-500/20 active:scale-95 transition-all">Save Changes</button>
             </div>
           </div>
         </div>
@@ -391,7 +394,6 @@ export default function RosterGen() {
              </div>
              <div className="p-4 overflow-y-auto space-y-4">
                 <input className="w-full p-2 bg-gray-50 dark:bg-black border border-gray-200 dark:border-gray-700 rounded-lg text-sm outline-none" placeholder={getSundayUnit(editingDay.dateObj) || "Add a note..."} value={notes[editingDay.dateKey] || ''} onChange={(e) => setNotes({...notes, [editingDay.dateKey]: e.target.value})} />
-                {/* FORCED TWO COLUMN DATE EDITOR ON MOBILE */}
                 <div className="grid grid-cols-2 gap-3">
                   {Object.entries(CATEGORIES).map(([catKey, cat]) => (
                     <div key={catKey} className="space-y-1">
@@ -401,11 +403,11 @@ export default function RosterGen() {
                           const isSelected = assignments[editingDay.dateKey]?.includes(doc.id);
                           return (
                             <button key={doc.id} onClick={() => toggleDocAssignment(doc.id)} className={cn("w-full flex items-center justify-between p-1.5 rounded-lg border transition-all", isSelected ? "bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800" : "bg-white dark:bg-gray-800 border-transparent")}>
-                              <div className="flex items-center gap-1.5 overflow-hidden">
+                              <div className="flex items-center gap-1.5 overflow-hidden text-left">
                                 <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{backgroundColor: doc.color}}/>
                                 <span className="text-[11px] font-bold text-gray-700 dark:text-gray-300 truncate">{doc.name}</span>
                               </div>
-                              {isSelected && <Check size={12} className="text-blue-600"/>}
+                              {isSelected && <Check size={12} className="text-blue-600 flex-shrink-0"/>}
                             </button>
                           )
                         })}
@@ -421,9 +423,8 @@ export default function RosterGen() {
         </div>
       )}
 
-      {/* Floating Bottom Nav */}
-      <nav className="fixed bottom-0 w-full bg-white/90 dark:bg-gray-900/90 backdrop-blur-lg border-t border-gray-200 dark:border-gray-800 p-3 z-50 flex justify-around items-center">
-        <button onClick={() => !isLocked && setShowDocManager(true)} className="flex flex-col items-center gap-1 text-gray-400 hover:text-blue-600">
+      <nav className="fixed bottom-0 w-full bg-white/90 dark:bg-gray-900/90 backdrop-blur-lg border-t border-gray-200 dark:border-gray-800 p-3 z-50 flex justify-around items-center safe-area-pb">
+        <button onClick={() => !isLocked && setShowDocManager(true)} className="group flex flex-col items-center gap-1 text-gray-400 hover:text-blue-600">
           <div className="p-1.5 rounded-full hover:bg-blue-50 transition-colors"><UserPlus size={20} /></div>
           <span className="text-[9px] font-bold">Staff</span>
         </button>
@@ -431,7 +432,7 @@ export default function RosterGen() {
              const canvas = await html2canvas(exportRef.current, { scale: 2 });
              const link = document.createElement('a'); link.download = 'roster.png';
              link.href = canvas.toDataURL(); link.click();
-        }} className="flex flex-col items-center gap-1 text-gray-400 hover:text-pink-600">
+        }} className="group flex flex-col items-center gap-1 text-gray-400 hover:text-pink-600">
            <div className="p-1.5 rounded-full hover:bg-pink-50 transition-colors"><ImageIcon size={20} /></div>
           <span className="text-[9px] font-bold">PNG</span>
         </button>
