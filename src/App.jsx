@@ -45,7 +45,6 @@ export default function RosterGen() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
   
-  // Auth States
   const [user, setUser] = useState(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [email, setEmail] = useState('');
@@ -58,7 +57,6 @@ export default function RosterGen() {
   const [showDocManager, setShowDocManager] = useState(false);
   const [pickingColorFor, setPickingColorFor] = useState(null); 
 
-  // Auth Listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -137,7 +135,6 @@ export default function RosterGen() {
         .join(" & ");
       csv += `"${dateStr}","${dayStr}","${noteStr}","${docs}"\n`;
     });
-    
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -209,13 +206,11 @@ export default function RosterGen() {
           const isSun = date.getDay() === 0;
           const isMWF = [1, 3, 5].includes(date.getDay());
           const isToday = date.toDateString() === todayStr;
-          
           const assignedDocs = (assignments[dateKey] || [])
             .map(id => doctors.find(d => d.id === id)).filter(Boolean)
             .sort((a, b) => CATEGORIES[a.category].rank - CATEGORIES[b.category].rank);
           const note = notes[dateKey] ?? getSundayUnit(date);
 
-          // Grid Cell Background Logic
           let cellBg = "bg-white/90 dark:bg-gray-900/80";
           if (isSun) cellBg = "bg-red-50/70 dark:bg-red-900/20";
           else if (isMWF) cellBg = "bg-indigo-50/40 dark:bg-indigo-900/20";
@@ -223,18 +218,12 @@ export default function RosterGen() {
           return (
             <div key={dateKey} onClick={() => handleCellClick(date, dateKey)}
               className={cn("min-h-[85px] p-0.5 flex flex-col items-center relative transition-all", cellBg, !isLocked && "cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/30", isToday && "ring-2 ring-amber-400 z-10 shadow-lg")}>
-              
-              {/* Date Numeral with Montserrat Black */}
-              <span className={cn("text-[15px] leading-none mb-0.5 select-none", isSun ? "text-red-500" : "text-gray-700 dark:text-gray-300")} style={{ fontFamily: '"Montserrat", sans-serif', fontWeight: 900 }}>
+              <span className={cn("text-[15px] leading-none mb-0.5 select-none", isSun ? "text-red-500" : "text-gray-700 dark:text-gray-300")} style={{ fontFamily: '"Archivo Black", sans-serif' }}>
                 {date.getDate()}
               </span>
-              
               <div className="flex flex-col gap-px w-full">
                 {assignedDocs.map(doc => (
-                  <div key={doc.id} 
-                    // Added + '99' for hex transparency
-                    style={{ backgroundColor: doc.color + '99', fontFamily: '"PT Sans Narrow", sans-serif', fontWeight: 700 }} 
-                    className="text-[10px] text-gray-900 px-0.5 py-px rounded-[2px] text-center leading-[1.1] break-words shadow-sm backdrop-blur-sm">
+                  <div key={doc.id} style={{ backgroundColor: doc.color + '99', fontFamily: '"PT Sans Narrow", sans-serif', fontWeight: 700 }} className="text-[10px] text-gray-900 px-0.5 py-px rounded-[2px] text-center leading-[1.1] break-words shadow-sm backdrop-blur-sm">
                     {doc.name}
                   </div>
                 ))}
@@ -250,7 +239,7 @@ export default function RosterGen() {
   return (
     <div className={cn("min-h-screen transition-all duration-300 font-sans", isDarkMode ? "dark bg-gray-900 text-gray-100" : "bg-slate-50 text-gray-800")}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@900&family=PT+Sans+Narrow:wght@400;700&family=Source+Code+Pro:wght@600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=PT+Sans+Narrow:wght@400;700&family=Source+Code+Pro:wght@600&display=swap');
         .custom-scrollbar::-webkit-scrollbar { height: 4px; width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
         .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; }
@@ -292,7 +281,6 @@ export default function RosterGen() {
             {renderCalendarGrid()}
         </div>
 
-        {/* Quick Assign - Now scrollable and categorized */}
         {!isLocked && (
           <div className="mt-6 bg-white/80 dark:bg-gray-800/80 rounded-2xl p-4 shadow-lg border border-white/20 dark:border-gray-700">
             <div className="flex justify-between items-center mb-3">
@@ -320,42 +308,7 @@ export default function RosterGen() {
           </div>
         )}
 
-        {/* Doctor Summary & Charts */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 px-1">
-          {/* Detailed Summary with Copy buttons */}
-          <div className="bg-white/80 dark:bg-gray-800/80 rounded-2xl p-4 shadow-lg border border-white/20 dark:border-gray-700">
-            <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-100 dark:border-gray-700"><PieChart size={16} className="text-pink-500" /><h3 className="text-xs font-black uppercase text-gray-500 tracking-widest">Doctor Summary</h3></div>
-            <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-              {Object.keys(CATEGORIES).map(catKey => {
-                 const catDocs = doctors.filter(d => d.category === catKey);
-                 if(catDocs.length === 0) return null;
-                 return (
-                   <div key={catKey}>
-                     <div className={cn("text-[9px] font-bold uppercase mb-1.5", CATEGORIES[catKey].color)}>{CATEGORIES[catKey].label}</div>
-                     <div className="space-y-1.5">
-                       {catDocs.map(doc => {
-                          const dates = cycle.dates.filter(d => (assignments[d.toISOString().split('T')[0]] || []).includes(doc.id)).map(d => d.getDate());
-                          if(dates.length === 0) return null;
-                          const dateString = dates.join(', ');
-                          return (
-                            <div key={doc.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-1.5 rounded-lg text-xs border border-gray-100 dark:border-gray-700">
-                               <div className="flex items-center gap-2 overflow-hidden w-full pr-2">
-                                 <span className="font-bold truncate w-24 flex-shrink-0 text-gray-700 dark:text-gray-300" style={{ fontFamily: '"PT Sans Narrow"', fontWeight: 700 }}>{doc.name}</span>
-                                 <span className="text-[10px] font-mono text-gray-500 truncate">{dateString}</span>
-                               </div>
-                               <button onClick={() => navigator.clipboard.writeText(`${doc.name}: ${dateString}`)} className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md text-gray-400 hover:text-blue-500 transition-colors flex-shrink-0" title="Copy to clipboard">
-                                 <Copy size={14} />
-                               </button>
-                            </div>
-                          )
-                       })}
-                     </div>
-                   </div>
-                 )
-              })}
-            </div>
-          </div>
-
           <div className="bg-white/80 dark:bg-gray-800/80 rounded-2xl p-4 shadow-lg border border-white/20 dark:border-gray-700">
             <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-100 dark:border-gray-700"><BarChart3 size={16} className="text-purple-500" /><h3 className="text-xs font-black uppercase text-gray-500 tracking-widest">Total Counts</h3></div>
             <div className="space-y-3">
@@ -364,9 +317,31 @@ export default function RosterGen() {
               ))}
             </div>
           </div>
+
+          {/* Doctor Summary (Faculty Only) */}
+          <div className="bg-white/80 dark:bg-gray-800/80 rounded-2xl p-4 shadow-lg border border-white/20 dark:border-gray-700">
+            <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-100 dark:border-gray-700"><PieChart size={16} className="text-pink-500" /><h3 className="text-xs font-black uppercase text-gray-500 tracking-widest">Faculty Log</h3></div>
+            <div className="space-y-1.5 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+              {doctors.filter(d => d.category === 'faculty').map(doc => {
+                 const dates = cycle.dates.filter(d => (assignments[d.toISOString().split('T')[0]] || []).includes(doc.id)).map(d => d.getDate());
+                 if(dates.length === 0) return null;
+                 const dateString = dates.join(', ');
+                 return (
+                   <div key={doc.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-1.5 rounded-lg text-xs border border-gray-100 dark:border-gray-700">
+                      <div className="flex items-center gap-2 overflow-hidden w-full pr-2">
+                        <span className="font-bold truncate w-24 flex-shrink-0 text-gray-700 dark:text-gray-300" style={{ fontFamily: '"PT Sans Narrow"', fontWeight: 700 }}>{doc.name}</span>
+                        <span className="text-[10px] font-mono text-gray-500 truncate">{dateString}</span>
+                      </div>
+                      <button onClick={() => navigator.clipboard.writeText(`${doc.name}: ${dateString}`)} className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md text-gray-400 hover:text-blue-500 transition-colors flex-shrink-0">
+                        <Copy size={14} />
+                      </button>
+                   </div>
+                 )
+              })}
+            </div>
+          </div>
         </div>
 
-        {/* Last Updated Timestamp */}
         {lastUpdated && (
            <div className="text-center mt-8 text-[9px] font-mono uppercase tracking-widest text-gray-400">
               Last Updated: {new Date(lastUpdated).toLocaleString()}
