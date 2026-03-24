@@ -2,10 +2,12 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   UserPlus, Lock, Unlock, Sun, Moon, 
   ChevronLeft, ChevronRight, Image as ImageIcon, 
-  Trash2, Check, X, Eraser, BarChart3, PieChart, Palette
+  Trash2, Check, X, Eraser, BarChart3, PieChart, Palette, LogOut
 } from 'lucide-react';
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, onSnapshot, setDoc } from "firebase/firestore";
+// NEW: Import Firebase Auth functions
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 import html2canvas from 'html2canvas';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -35,6 +37,8 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+// NEW: Initialize Auth
+const auth = getAuth(app);
 
 export default function RosterGen() {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -42,13 +46,34 @@ export default function RosterGen() {
   const [assignments, setAssignments] = useState({});
   const [notes, setNotes] = useState({});
   const [isDarkMode, setIsDarkMode] = useState(false);
+  
+  // NEW: Auth State
+  const [user, setUser] = useState(null);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  
   const [isLocked, setIsLocked] = useState(true);
   const [selectedTool, setSelectedTool] = useState(null);
   const [editingDay, setEditingDay] = useState(null);
   const [showDocManager, setShowDocManager] = useState(false);
   const [pickingColorFor, setPickingColorFor] = useState(null); 
   const [syncStatus, setSyncStatus] = useState('Syncing...');
-  const exportRef = useRef(null);
+
+  // NEW: Listen for Auth state changes
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (currentUser) {
+        setIsLocked(false);
+        setShowLoginModal(false);
+      } else {
+        setIsLocked(true);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     const rosterRef = doc(db, "rosters", "main_roster");
@@ -63,7 +88,25 @@ export default function RosterGen() {
     });
   }, []);
 
+  // NEW: Login and Logout Handlers
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      setEmail('');
+      setPassword('');
+    } catch (err) {
+      setAuthError('Invalid email or password.');
+    }
+  };
+
+  const handleLogout = async () => {
+    await signOut(auth);
+  };
+
   const saveToCloud = async (updates = {}) => {
+    if (!user) return; // Prevent saving if not logged in
     setSyncStatus('Saving...');
     try {
       const rosterRef = doc(db, "rosters", "main_roster");
@@ -136,19 +179,6 @@ export default function RosterGen() {
     }
   };
 
-  const toggleDocAssignment = (docId) => {
-    if (!editingDay) return;
-    const dateKey = editingDay.dateKey;
-    let current = assignments[dateKey] || [];
-    if (current.includes(docId)) {
-      current = current.filter(id => id !== docId);
-    } else {
-      if (current.length >= 3) return;
-      current = [...current, docId];
-    }
-    setAssignments({ ...assignments, [dateKey]: current });
-  };
-
   const renderCalendarGrid = (isExport = false) => {
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     let offset = cycle.dates[0].getDay() - 1;
@@ -158,9 +188,9 @@ export default function RosterGen() {
     return (
       <div className={cn("grid grid-cols-7 gap-px md:gap-0.5", isExport ? "bg-gray-300" : "bg-white/10 dark:bg-black/10 backdrop-blur-sm")}>
         {days.map(d => (
-          <div key={d} className="text-center text-[10px] font-bold uppercase text-gray-500 py-1 bg-white/80 dark:bg-darkcard/80 backdrop-blur-sm">{d}</div>
+          <div key={d} className="text-center text-[10px] font-bold uppercase text-gray-500 py-1 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm">{d}</div>
         ))}
-        {Array(offset).fill(0).map((_, i) => <div key={`off-${i}`} className="bg-white/50 dark:bg-darkcard/50"/>)}
+        {Array(offset).fill(0).map((_, i) => <div key={`off-${i}`} className="bg-white/50 dark:bg-gray-800/50"/>)}
         {cycle.dates.map(date => {
           const dateKey = date.toISOString().split('T')[0];
           const isSun = date.getDay() === 0;
@@ -219,10 +249,19 @@ export default function RosterGen() {
           <h1 className="text-xl font-black tracking-tighter bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">RosterGen</h1>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => { if(!isLocked) setIsLocked(true); else { if(prompt("Passcode:") === "2613") setIsLocked(false); } }} 
+          {/* NEW: Auth Button Logic */}
+          <button onClick={() => user ? handleLogout() : setShowLoginModal(true)} 
              className={cn("px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1.5 transition-all shadow-sm border", isLocked ? "bg-red-50 text-red-600 border-red-100" : "bg-emerald-50 text-emerald-600 border-emerald-100")}>
-            {isLocked ? <Lock size={12}/> : <Unlock size={12}/>} {isLocked ? "View Only" : "Unlocked"}
+            {isLocked ? <Lock size={12}/> : <Unlock size={12}/>} 
+            {isLocked ? "Login to Edit" : "Logout"}
           </button>
+          
+          {user && (
+            <button onClick={() => setShowDocManager(true)} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500">
+              <UserPlus size={18} />
+            </button>
+          )}
+
           <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500">
             {isDarkMode ? <Sun size={18} className="text-amber-400"/> : <Moon size={18}/>}
           </button>
@@ -257,7 +296,7 @@ export default function RosterGen() {
             {renderCalendarGrid()}
         </div>
 
-        {/* Quick Assign - Grid View (No Scrolling) */}
+        {/* Quick Assign */}
         {!isLocked && (
           <div className="mt-6">
             <div className="text-[10px] font-bold uppercase text-gray-400 mb-2 px-1">Quick Assign</div>
@@ -277,6 +316,7 @@ export default function RosterGen() {
           </div>
         )}
 
+        {/* Analytics */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 px-1">
           <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-md rounded-2xl p-4 shadow-lg border border-white/20 dark:border-gray-700">
             <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-100 dark:border-gray-700">
@@ -303,28 +343,48 @@ export default function RosterGen() {
               ))}
             </div>
           </div>
-          <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-md rounded-2xl p-4 shadow-lg border border-white/20 dark:border-gray-700">
-            <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-100 dark:border-gray-700">
-              <PieChart size={16} className="text-pink-500" />
-              <h3 className="text-xs font-black uppercase text-gray-500 tracking-widest">Faculty Log</h3>
-            </div>
-            <div className="space-y-1 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
-              {doctors.filter(d => d.category === 'faculty').map(doc => {
-                 const dates = cycle.dates.filter(d => assignments[d.toISOString().split('T')[0]]?.includes(doc.id)).map(d => d.getDate());
-                 if (dates.length === 0) return null;
-                 return (
-                   <div key={doc.id} className="flex text-xs py-1 border-b border-dashed border-gray-200 dark:border-gray-700 last:border-0">
-                     <span className="font-bold w-20 truncate mr-2 text-gray-700 dark:text-gray-300" style={{ fontFamily: '"PT Sans Narrow"' }}>{doc.name}</span>
-                     <span className="font-mono text-gray-500 text-[10px] flex-grow break-words">{dates.join(', ')}</span>
-                   </div>
-                 )
-              })}
-            </div>
-          </div>
         </div>
       </main>
 
-      {/* Staff Manager Modal */}
+      {/* NEW: Login Modal */}
+      {showLoginModal && (
+        <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-900 w-full max-w-sm rounded-2xl shadow-2xl p-6 border border-gray-100 dark:border-gray-800 relative">
+            <button onClick={() => setShowLoginModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+              <X size={20} />
+            </button>
+            <h3 className="text-lg font-bold mb-4 text-gray-800 dark:text-gray-100">Admin Login</h3>
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Email</label>
+                <input 
+                  type="email" 
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 dark:text-gray-200"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Password</label>
+                <input 
+                  type="password" 
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 dark:text-gray-200"
+                />
+              </div>
+              {authError && <p className="text-xs text-red-500 font-bold">{authError}</p>}
+              <button type="submit" className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors">
+                Sign In
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Staff Manager Modal (Completed) */}
       {showDocManager && (
         <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white dark:bg-gray-900 w-full max-w-sm rounded-2xl shadow-2xl flex flex-col max-h-[85vh] border border-gray-100 dark:border-gray-800 relative">
@@ -334,7 +394,12 @@ export default function RosterGen() {
                   <div className="grid grid-cols-5 gap-3">
                      {PASTEL_COLORS.map(c => (
                         <button key={c} style={{backgroundColor: c}} className="w-10 h-10 rounded-full border-2 border-transparent hover:scale-110 shadow-sm transition-all"
-                           onClick={() => { setDoctors(doctors.map(d => d.id === pickingColorFor ? {...d, color: c} : d)); setPickingColorFor(null); }} />
+                           onClick={() => { 
+                             const newDocs = doctors.map(d => d.id === pickingColorFor ? {...d, color: c} : d);
+                             setDoctors(newDocs); 
+                             saveToCloud({ doctors: newDocs });
+                             setPickingColorFor(null); 
+                           }} />
                      ))}
                   </div>
                   <button onClick={() => setPickingColorFor(null)} className="mt-6 text-xs font-bold text-gray-400 underline">Cancel</button>
@@ -350,23 +415,30 @@ export default function RosterGen() {
                   <div className="flex justify-between items-end border-b border-gray-100 dark:border-gray-800 pb-1">
                     <span className={cn("text-[10px] font-black uppercase tracking-widest", CATEGORIES[catKey].color)}>{CATEGORIES[catKey].label}</span>
                     <button onClick={() => {
-                        setDoctors([...doctors, { id: Date.now(), name: "Dr. Name", category: catKey, color: PASTEL_COLORS[doctors.length % PASTEL_COLORS.length] }]);
+                        const newDocs = [...doctors, { id: Date.now().toString(), name: "Dr. Name", category: catKey, color: PASTEL_COLORS[doctors.length % PASTEL_COLORS.length] }];
+                        setDoctors(newDocs);
+                        saveToCloud({ doctors: newDocs });
                     }} className="text-blue-500 text-[10px] font-bold bg-blue-50 px-2 py-0.5 rounded">+ ADD</button>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     {doctors.filter(d => d.category === catKey).map(doc => (
-                      <div key={doc.id} className="relative flex items-center bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-700 overflow-hidden">
-                        <button onClick={() => setPickingColorFor(doc.id)} className="ml-1.5 w-5 h-5 rounded-full shadow-sm border border-black/10 flex-shrink-0" style={{ backgroundColor: doc.color }}>
-                          <Palette size={10} className="mx-auto opacity-50"/>
-                        </button>
+                      <div key={doc.id} className="relative flex items-center bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-700 overflow-hidden pr-8">
+                        <button onClick={() => setPickingColorFor(doc.id)} className="ml-1.5 w-5 h-5 rounded-full shadow-sm border border-black/10 flex-shrink-0" style={{ backgroundColor: doc.color }}></button>
                         <input 
-                          className="flex-grow text-[11px] bg-transparent border-none py-1.5 pl-1.5 pr-7 outline-none font-medium" 
-                          value={doc.name} 
-                          onChange={(e) => setDoctors(doctors.map(d => d.id === doc.id ? {...d, name: e.target.value} : d))} 
+                          value={doc.name}
+                          onChange={(e) => {
+                             const newDocs = doctors.map(d => d.id === doc.id ? {...d, name: e.target.value} : d);
+                             setDoctors(newDocs);
+                          }}
+                          onBlur={() => saveToCloud({ doctors: doctors })}
+                          className="w-full bg-transparent text-xs p-2 outline-none font-bold"
                         />
-                        {/* Delete Button - Absolute Positioned to stay fixed at end */}
-                        <button onClick={() => setDoctors(doctors.filter(d => d.id !== doc.id))} className="absolute right-1.5 text-gray-400 hover:text-red-500 bg-gray-50 dark:bg-gray-800/50 pl-1">
-                          <Trash2 size={14}/>
+                        <button onClick={() => {
+                           const newDocs = doctors.filter(d => d.id !== doc.id);
+                           setDoctors(newDocs);
+                           saveToCloud({ doctors: newDocs });
+                        }} className="absolute right-2 text-red-400 hover:text-red-600">
+                          <Trash2 size={12} />
                         </button>
                       </div>
                     ))}
@@ -374,77 +446,9 @@ export default function RosterGen() {
                 </div>
               ))}
             </div>
-            <div className="p-4 border-t border-gray-100 dark:border-gray-800">
-              <button onClick={() => { saveToCloud({ doctors }); setShowDocManager(false); }} className="w-full bg-blue-600 text-white py-2.5 rounded-xl font-bold text-xs">SAVE CHANGES</button>
-            </div>
           </div>
         </div>
       )}
-
-      {/* Entry Editor Modal */}
-      {editingDay && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-900 w-full max-w-md rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-800 flex flex-col max-h-[90vh]">
-             <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50 rounded-t-2xl">
-                <div>
-                   <h4 className="font-bold text-lg">{editingDay.dateObj.getDate()} {editingDay.dateObj.toLocaleString('default',{month:'short'})}</h4>
-                   <p className="text-xs text-gray-400 font-bold uppercase">{editingDay.dateObj.toLocaleString('default',{weekday:'long'})}</p>
-                </div>
-                <button onClick={() => {saveToCloud(); setEditingDay(null);}} className="bg-gray-100 dark:bg-gray-700 p-1 rounded-full"><Check size={18} className="text-green-600"/></button>
-             </div>
-             <div className="p-4 overflow-y-auto space-y-4">
-                <input className="w-full p-2 bg-gray-50 dark:bg-black border border-gray-200 dark:border-gray-700 rounded-lg text-sm outline-none" placeholder={getSundayUnit(editingDay.dateObj) || "Add a note..."} value={notes[editingDay.dateKey] || ''} onChange={(e) => setNotes({...notes, [editingDay.dateKey]: e.target.value})} />
-                <div className="grid grid-cols-2 gap-3">
-                  {Object.entries(CATEGORIES).map(([catKey, cat]) => (
-                    <div key={catKey} className="space-y-1">
-                      <div className={cn("text-[10px] font-black uppercase mb-1", cat.color)}>{cat.label}</div>
-                      <div className="flex flex-col gap-1">
-                        {doctors.filter(d => d.category === catKey).map(doc => {
-                          const isSelected = assignments[editingDay.dateKey]?.includes(doc.id);
-                          return (
-                            <button key={doc.id} onClick={() => toggleDocAssignment(doc.id)} className={cn("w-full flex items-center justify-between p-1.5 rounded-lg border transition-all", isSelected ? "bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800" : "bg-white dark:bg-gray-800 border-transparent")}>
-                              <div className="flex items-center gap-1.5 overflow-hidden">
-                                <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{backgroundColor: doc.color}}/>
-                                <span className="text-[11px] font-bold text-gray-700 dark:text-gray-300 truncate">{doc.name}</span>
-                              </div>
-                              {isSelected && <Check size={12} className="text-blue-600"/>}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-             </div>
-             <div className="p-3 border-t border-gray-100 dark:border-gray-800">
-               <button onClick={() => { saveToCloud(); setEditingDay(null); }} className="w-full bg-black dark:bg-white text-white dark:text-black py-2 rounded-lg font-bold text-xs uppercase">Done</button>
-             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Footer Nav */}
-      <nav className="fixed bottom-0 w-full bg-white/90 dark:bg-gray-900/90 backdrop-blur-lg border-t border-gray-200 dark:border-gray-800 p-3 z-50 flex justify-around items-center safe-area-pb">
-        <button onClick={() => !isLocked && setShowDocManager(true)} className="flex flex-col items-center gap-1 text-gray-400 hover:text-blue-600">
-          <div className="p-1.5 rounded-full hover:bg-blue-50 transition-colors"><UserPlus size={20} /></div>
-          <span className="text-[9px] font-bold">Staff</span>
-        </button>
-        <button onClick={async () => {
-             const canvas = await html2canvas(exportRef.current, { scale: 2 });
-             const link = document.createElement('a'); link.download = 'roster.png';
-             link.href = canvas.toDataURL(); link.click();
-        }} className="flex flex-col items-center gap-1 text-gray-400 hover:text-pink-600">
-           <div className="p-1.5 rounded-full hover:bg-pink-50 transition-colors"><ImageIcon size={20} /></div>
-          <span className="text-[9px] font-bold">PNG</span>
-        </button>
-      </nav>
-
-      <div className="fixed -left-[3000px] top-0 w-[1200px] bg-white text-black p-8 font-sans" ref={exportRef}>
-        <div className="text-3xl font-black text-center mb-6 uppercase border-b-4 border-black pb-4">
-          Duty Roster: {cycle.startDate.toLocaleString('default', { month: 'short' })} - {cycle.endDate.toLocaleString('default', { month: 'short' })} {cycle.endDate.getFullYear()}
-        </div>
-        {renderCalendarGrid(true)}
-      </div>
     </div>
   );
 }
