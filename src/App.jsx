@@ -1,13 +1,12 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   UserPlus, Lock, Unlock, Sun, Moon, 
-  ChevronLeft, ChevronRight, Image as ImageIcon, 
-  Trash2, Check, X, Eraser, BarChart3, PieChart, Palette
+  ChevronLeft, ChevronRight, FileText, 
+  Trash2, Check, X, Eraser, BarChart3, PieChart, Palette, Copy
 } from 'lucide-react';
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, onSnapshot, setDoc } from "firebase/firestore";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
-import html2canvas from 'html2canvas';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -44,6 +43,7 @@ export default function RosterGen() {
   const [assignments, setAssignments] = useState({});
   const [notes, setNotes] = useState({});
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
   
   // Auth States
   const [user, setUser] = useState(null);
@@ -57,8 +57,6 @@ export default function RosterGen() {
   const [editingDay, setEditingDay] = useState(null);
   const [showDocManager, setShowDocManager] = useState(false);
   const [pickingColorFor, setPickingColorFor] = useState(null); 
-  const [syncStatus, setSyncStatus] = useState('Syncing...');
-  const exportRef = useRef(null);
 
   // Auth Listener
   useEffect(() => {
@@ -78,7 +76,7 @@ export default function RosterGen() {
         setDoctors(data.doctors || []);
         setAssignments(data.assignments || {});
         setNotes(data.notes || {});
-        setSyncStatus('Live');
+        setLastUpdated(data.lastUpdated || null);
       }
     });
   }, []);
@@ -96,7 +94,6 @@ export default function RosterGen() {
 
   const saveToCloud = async (updates = {}) => {
     if (!user) return;
-    setSyncStatus('Saving...');
     try {
       const rosterRef = doc(db, "rosters", "main_roster");
       await setDoc(rosterRef, {
@@ -106,8 +103,7 @@ export default function RosterGen() {
         startDay: 26,
         lastUpdated: new Date().toISOString()
       }, { merge: true });
-      setTimeout(() => setSyncStatus('Live'), 800);
-    } catch (e) { setSyncStatus('Error'); }
+    } catch (e) { console.error("Error saving data: ", e); }
   };
 
   const cycle = useMemo(() => {
@@ -127,6 +123,30 @@ export default function RosterGen() {
     }
     return { startDate, endDate, dates };
   }, [currentDate]);
+
+  const exportCSV = () => {
+    let csv = "Date,Day,Note,Assigned Doctors\n";
+    cycle.dates.forEach(date => {
+      const dateKey = date.toISOString().split('T')[0];
+      const dateStr = date.toLocaleDateString();
+      const dayStr = date.toLocaleString('default', { weekday: 'short' });
+      const noteStr = notes[dateKey] || getSundayUnit(date) || "";
+      const docs = (assignments[dateKey] || [])
+        .map(id => doctors.find(d => d.id === id)?.name)
+        .filter(Boolean)
+        .join(" & ");
+      csv += `"${dateStr}","${dayStr}","${noteStr}","${docs}"\n`;
+    });
+    
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `Duty_Roster_${cycle.startDate.toLocaleString('default', {month:'short'})}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const getDocStatsInCycle = (docId) => {
     let count = 0, suns = 0;
@@ -172,14 +192,14 @@ export default function RosterGen() {
     setAssignments({ ...assignments, [dateKey]: current });
   };
 
-  const renderCalendarGrid = (isExport = false) => {
+  const renderCalendarGrid = () => {
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     let offset = cycle.dates[0].getDay() - 1;
     if (offset < 0) offset = 6;
     const todayStr = new Date().toDateString();
 
     return (
-      <div className={cn("grid grid-cols-7 gap-px md:gap-0.5", isExport ? "bg-gray-300" : "bg-white/10 dark:bg-black/10")}>
+      <div className="grid grid-cols-7 gap-px md:gap-0.5 bg-white/10 dark:bg-black/10">
         {days.map(d => (
           <div key={d} className="text-center text-[10px] font-bold uppercase text-gray-500 py-1 bg-white/80 dark:bg-gray-800/80">{d}</div>
         ))}
@@ -187,18 +207,34 @@ export default function RosterGen() {
         {cycle.dates.map(date => {
           const dateKey = date.toISOString().split('T')[0];
           const isSun = date.getDay() === 0;
+          const isMWF = [1, 3, 5].includes(date.getDay());
+          const isToday = date.toDateString() === todayStr;
+          
           const assignedDocs = (assignments[dateKey] || [])
             .map(id => doctors.find(d => d.id === id)).filter(Boolean)
             .sort((a, b) => CATEGORIES[a.category].rank - CATEGORIES[b.category].rank);
           const note = notes[dateKey] ?? getSundayUnit(date);
 
+          // Grid Cell Background Logic
+          let cellBg = "bg-white/90 dark:bg-gray-900/80";
+          if (isSun) cellBg = "bg-red-50/70 dark:bg-red-900/20";
+          else if (isMWF) cellBg = "bg-indigo-50/40 dark:bg-indigo-900/20";
+
           return (
-            <div key={dateKey} onClick={() => !isExport && handleCellClick(date, dateKey)}
-              className={cn("min-h-[85px] p-0.5 flex flex-col items-center relative transition-all", isSun ? "bg-red-50/70 dark:bg-red-900/20" : "bg-white/90 dark:bg-gray-900/80", !isExport && !isLocked && "cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/30", !isExport && date.toDateString() === todayStr && "ring-2 ring-amber-400 z-10 shadow-lg")}>
-              <span className={cn("text-sm leading-none mb-0.5 select-none", isSun ? "text-red-500 font-bold" : "text-gray-600 dark:text-gray-400")} style={{ fontFamily: '"Source Code Pro", monospace' }}>{date.getDate()}</span>
+            <div key={dateKey} onClick={() => handleCellClick(date, dateKey)}
+              className={cn("min-h-[85px] p-0.5 flex flex-col items-center relative transition-all", cellBg, !isLocked && "cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/30", isToday && "ring-2 ring-amber-400 z-10 shadow-lg")}>
+              
+              {/* Date Numeral with Montserrat Black */}
+              <span className={cn("text-[15px] leading-none mb-0.5 select-none", isSun ? "text-red-500" : "text-gray-700 dark:text-gray-300")} style={{ fontFamily: '"Montserrat", sans-serif', fontWeight: 900 }}>
+                {date.getDate()}
+              </span>
+              
               <div className="flex flex-col gap-px w-full">
                 {assignedDocs.map(doc => (
-                  <div key={doc.id} style={{ backgroundColor: doc.color, fontFamily: '"PT Sans Narrow", sans-serif', fontWeight: 700 }} className="text-[10px] text-gray-900 px-0.5 py-px rounded-[2px] text-center leading-[1.1] break-words shadow-sm">
+                  <div key={doc.id} 
+                    // Added + '99' for hex transparency
+                    style={{ backgroundColor: doc.color + '99', fontFamily: '"PT Sans Narrow", sans-serif', fontWeight: 700 }} 
+                    className="text-[10px] text-gray-900 px-0.5 py-px rounded-[2px] text-center leading-[1.1] break-words shadow-sm backdrop-blur-sm">
                     {doc.name}
                   </div>
                 ))}
@@ -214,9 +250,10 @@ export default function RosterGen() {
   return (
     <div className={cn("min-h-screen transition-all duration-300 font-sans", isDarkMode ? "dark bg-gray-900 text-gray-100" : "bg-slate-50 text-gray-800")}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=PT+Sans+Narrow:wght@400;700&family=Source+Code+Pro:wght@600&display=swap');
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@900&family=PT+Sans+Narrow:wght@400;700&family=Source+Code+Pro:wght@600&display=swap');
+        .custom-scrollbar::-webkit-scrollbar { height: 4px; width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; }
       `}</style>
       
       <header className="fixed top-0 w-full z-40 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-white/20 dark:border-gray-700 shadow-sm px-3 py-2 flex justify-between items-center">
@@ -239,15 +276,12 @@ export default function RosterGen() {
         <div className="flex justify-between items-end mb-4 px-1">
           <div>
             <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block mb-1">Current Cycle</span>
-            <div className="flex items-center gap-2 bg-white dark:bg-gray-800 rounded-full p-1 pl-3 pr-1 shadow-sm border border-gray-200 dark:border-gray-700">
-               <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{cycle.startDate.toLocaleString('default', { month: 'short', year: 'numeric' })}</span>
-               <div className="flex gap-1">
-                 <button onClick={() => { const d = new Date(currentDate); d.setMonth(d.getMonth()-1); setCurrentDate(d); }} className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"><ChevronLeft size={16}/></button>
-                 <button onClick={() => { const d = new Date(currentDate); d.setMonth(d.getMonth()+1); setCurrentDate(d); }} className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"><ChevronRight size={16}/></button>
-               </div>
-            </div>
+            <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{cycle.startDate.toLocaleString('default', { month: 'short', year: 'numeric' })}</span>
           </div>
-          <span className={cn("text-[9px] font-mono", syncStatus === 'Live' ? "text-emerald-500" : "text-amber-500")}>● {syncStatus}</span>
+          <div className="flex gap-1 bg-white dark:bg-gray-800 rounded-full p-1 shadow-sm border border-gray-200 dark:border-gray-700">
+             <button onClick={() => { const d = new Date(currentDate); d.setMonth(d.getMonth()-1); setCurrentDate(d); }} className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"><ChevronLeft size={16}/></button>
+             <button onClick={() => { const d = new Date(currentDate); d.setMonth(d.getMonth()+1); setCurrentDate(d); }} className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"><ChevronRight size={16}/></button>
+          </div>
         </div>
 
         <div className="bg-white/40 dark:bg-gray-900/40 backdrop-blur-xl border border-white/50 dark:border-gray-700 rounded-2xl overflow-hidden shadow-2xl">
@@ -258,30 +292,86 @@ export default function RosterGen() {
             {renderCalendarGrid()}
         </div>
 
+        {/* Quick Assign - Now scrollable and categorized */}
         {!isLocked && (
-          <div className="mt-6">
-            <div className="text-[10px] font-bold uppercase text-gray-400 mb-2 px-1">Quick Assign</div>
-            <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2 px-1">
-               <button onClick={() => setSelectedTool(selectedTool === 'eraser' ? null : 'eraser')} className={cn("aspect-square rounded-xl border-2 flex flex-col items-center justify-center transition-all", selectedTool === 'eraser' ? "border-red-500 bg-red-50 text-red-600 scale-105" : "border-transparent bg-white dark:bg-gray-800 text-gray-400")}><Eraser size={20} /><span className="text-[8px] font-black mt-1">CLEAR</span></button>
-              {doctors.map(doc => (
-                <button key={doc.id} onClick={() => setSelectedTool(selectedTool === doc.id ? null : doc.id)} style={{ backgroundColor: doc.color }} className={cn("aspect-square rounded-xl border-2 p-1 transition-all flex flex-col items-center justify-center relative", selectedTool === doc.id ? "border-blue-600 scale-105 shadow-lg z-10" : "border-transparent hover:scale-105")}>
-                  <span className="text-[9px] text-gray-900 leading-tight text-center line-clamp-2 w-full break-words" style={{ fontFamily: '"PT Sans Narrow", sans-serif', fontWeight: 700 }}>{doc.name}</span>
-                </button>
-              ))}
+          <div className="mt-6 bg-white/80 dark:bg-gray-800/80 rounded-2xl p-4 shadow-lg border border-white/20 dark:border-gray-700">
+            <div className="flex justify-between items-center mb-3">
+               <div className="text-[10px] font-bold uppercase text-gray-400">Quick Assign</div>
+               <button onClick={() => setSelectedTool(selectedTool === 'eraser' ? null : 'eraser')} className={cn("px-2 py-1 rounded-md border flex items-center gap-1 text-[9px] font-bold transition-all", selectedTool === 'eraser' ? "bg-red-100 border-red-500 text-red-600" : "bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-500")}><Eraser size={12} /> CLEAR</button>
+            </div>
+            <div className="space-y-4">
+              {Object.keys(CATEGORIES).map(catKey => {
+                const catDocs = doctors.filter(d => d.category === catKey);
+                if (catDocs.length === 0) return null;
+                return (
+                  <div key={catKey}>
+                    <div className={cn("text-[9px] font-black uppercase mb-1.5", CATEGORIES[catKey].color)}>{CATEGORIES[catKey].label}</div>
+                    <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                      {catDocs.map(doc => (
+                        <button key={doc.id} onClick={() => setSelectedTool(selectedTool === doc.id ? null : doc.id)} style={{ backgroundColor: doc.color + '99' }} className={cn("h-8 min-w-[70px] px-2 rounded-lg border transition-all flex items-center justify-center flex-shrink-0", selectedTool === doc.id ? "border-blue-600 shadow-md transform scale-105" : "border-transparent opacity-90 hover:opacity-100")}>
+                          <span className="text-[10px] text-gray-900 line-clamp-1 break-all" style={{ fontFamily: '"PT Sans Narrow", sans-serif', fontWeight: 700 }}>{doc.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </div>
         )}
 
+        {/* Doctor Summary & Charts */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 px-1">
+          {/* Detailed Summary with Copy buttons */}
           <div className="bg-white/80 dark:bg-gray-800/80 rounded-2xl p-4 shadow-lg border border-white/20 dark:border-gray-700">
-            <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-100 dark:border-gray-700"><BarChart3 size={16} className="text-purple-500" /><h3 className="text-xs font-black uppercase text-gray-500 tracking-widest">Duty Counts</h3></div>
+            <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-100 dark:border-gray-700"><PieChart size={16} className="text-pink-500" /><h3 className="text-xs font-black uppercase text-gray-500 tracking-widest">Doctor Summary</h3></div>
+            <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+              {Object.keys(CATEGORIES).map(catKey => {
+                 const catDocs = doctors.filter(d => d.category === catKey);
+                 if(catDocs.length === 0) return null;
+                 return (
+                   <div key={catKey}>
+                     <div className={cn("text-[9px] font-bold uppercase mb-1.5", CATEGORIES[catKey].color)}>{CATEGORIES[catKey].label}</div>
+                     <div className="space-y-1.5">
+                       {catDocs.map(doc => {
+                          const dates = cycle.dates.filter(d => (assignments[d.toISOString().split('T')[0]] || []).includes(doc.id)).map(d => d.getDate());
+                          if(dates.length === 0) return null;
+                          const dateString = dates.join(', ');
+                          return (
+                            <div key={doc.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-1.5 rounded-lg text-xs border border-gray-100 dark:border-gray-700">
+                               <div className="flex items-center gap-2 overflow-hidden w-full pr-2">
+                                 <span className="font-bold truncate w-24 flex-shrink-0 text-gray-700 dark:text-gray-300" style={{ fontFamily: '"PT Sans Narrow"', fontWeight: 700 }}>{doc.name}</span>
+                                 <span className="text-[10px] font-mono text-gray-500 truncate">{dateString}</span>
+                               </div>
+                               <button onClick={() => navigator.clipboard.writeText(`${doc.name}: ${dateString}`)} className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md text-gray-400 hover:text-blue-500 transition-colors flex-shrink-0" title="Copy to clipboard">
+                                 <Copy size={14} />
+                               </button>
+                            </div>
+                          )
+                       })}
+                     </div>
+                   </div>
+                 )
+              })}
+            </div>
+          </div>
+
+          <div className="bg-white/80 dark:bg-gray-800/80 rounded-2xl p-4 shadow-lg border border-white/20 dark:border-gray-700">
+            <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-100 dark:border-gray-700"><BarChart3 size={16} className="text-purple-500" /><h3 className="text-xs font-black uppercase text-gray-500 tracking-widest">Total Counts</h3></div>
             <div className="space-y-3">
               {Object.entries(CATEGORIES).map(([catKey, cat]) => (
-                <div key={catKey}><div className={cn("text-[10px] font-bold uppercase mb-1", cat.color)}>{cat.label}</div><div className="grid grid-cols-4 gap-2">{doctors.filter(d => d.category === catKey).map(doc => { const { count, suns } = getDocStatsInCycle(doc.id); if (count === 0) return null; return ( <div key={doc.id} className="flex flex-col items-center bg-gray-50 dark:bg-gray-700/50 rounded p-1 border border-gray-100 dark:border-gray-700"><span className="text-[9px] truncate w-full text-center font-bold" style={{ fontFamily: '"PT Sans Narrow"', fontWeight: 700 }}>{doc.name}</span><span className="text-[10px] font-mono text-gray-600 dark:text-gray-300">{count} {suns > 0 && <span className="text-red-400 text-[8px]">({suns}S)</span>}</span></div> ); })}</div></div>
+                <div key={catKey}><div className={cn("text-[9px] font-bold uppercase mb-1", cat.color)}>{cat.label}</div><div className="grid grid-cols-4 gap-2">{doctors.filter(d => d.category === catKey).map(doc => { const { count, suns } = getDocStatsInCycle(doc.id); if (count === 0) return null; return ( <div key={doc.id} className="flex flex-col items-center bg-gray-50 dark:bg-gray-700/50 rounded p-1 border border-gray-100 dark:border-gray-700"><span className="text-[9px] truncate w-full text-center font-bold" style={{ fontFamily: '"PT Sans Narrow"', fontWeight: 700 }}>{doc.name}</span><span className="text-[10px] font-mono text-gray-600 dark:text-gray-300">{count} {suns > 0 && <span className="text-red-400 text-[8px]">({suns}S)</span>}</span></div> ); })}</div></div>
               ))}
             </div>
           </div>
         </div>
+
+        {/* Last Updated Timestamp */}
+        {lastUpdated && (
+           <div className="text-center mt-8 text-[9px] font-mono uppercase tracking-widest text-gray-400">
+              Last Updated: {new Date(lastUpdated).toLocaleString()}
+           </div>
+        )}
       </main>
 
       {showLoginModal && (
@@ -307,7 +397,7 @@ export default function RosterGen() {
             <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50 rounded-t-2xl"><h3 className="font-bold text-sm uppercase text-gray-600 dark:text-gray-300">Staff List</h3><button onClick={() => setShowDocManager(false)} className="p-1 hover:bg-gray-200 rounded-full"><X size={18}/></button></div>
             <div className="p-4 overflow-y-auto space-y-6 custom-scrollbar">
               {Object.keys(CATEGORIES).map(catKey => (
-                <div key={catKey} className="space-y-2"><div className="flex justify-between items-end border-b border-gray-100 dark:border-gray-800 pb-1"><span className={cn("text-[10px] font-black uppercase tracking-widest", CATEGORIES[catKey].color)}>{CATEGORIES[catKey].label}</span><button onClick={() => setDoctors([...doctors, { id: Date.now(), name: "Dr. Name", category: catKey, color: PASTEL_COLORS[doctors.length % PASTEL_COLORS.length] }])} className="text-blue-500 text-[10px] font-bold bg-blue-50 px-2 py-0.5 rounded">+ ADD</button></div>
+                <div key={catKey} className="space-y-2"><div className="flex justify-between items-end border-b border-gray-100 dark:border-gray-800 pb-1"><span className={cn("text-[10px] font-black uppercase tracking-widest", CATEGORIES[catKey].color)}>{CATEGORIES[catKey].label}</span><button onClick={() => setDoctors([...doctors, { id: Date.now().toString(), name: "Dr. Name", category: catKey, color: PASTEL_COLORS[doctors.length % PASTEL_COLORS.length] }])} className="text-blue-500 text-[10px] font-bold bg-blue-50 px-2 py-0.5 rounded">+ ADD</button></div>
                   <div className="grid grid-cols-2 gap-2">
                     {doctors.filter(d => d.category === catKey).map(doc => (
                       <div key={doc.id} className="relative flex items-center bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-700 overflow-hidden pr-8"><button onClick={() => setPickingColorFor(doc.id)} className="ml-1.5 w-5 h-5 rounded-full shadow-sm border border-black/10 flex-shrink-0" style={{ backgroundColor: doc.color }}></button><input className="w-full bg-transparent text-[11px] p-2 outline-none font-bold" style={{ fontFamily: '"PT Sans Narrow"', fontWeight: 700 }} value={doc.name} onChange={(e) => setDoctors(doctors.map(d => d.id === doc.id ? {...d, name: e.target.value} : d))} /><button onClick={() => setDoctors(doctors.filter(d => d.id !== doc.id))} className="absolute right-2 text-red-400 hover:text-red-600"><Trash2 size={12}/></button></div>
@@ -339,14 +429,15 @@ export default function RosterGen() {
       )}
 
       <nav className="fixed bottom-0 w-full bg-white/90 dark:bg-gray-900/90 backdrop-blur-lg border-t border-gray-200 dark:border-gray-800 p-3 z-50 flex justify-around items-center">
-        <button onClick={() => !isLocked && setShowDocManager(true)} className="flex flex-col items-center gap-1 text-gray-400 hover:text-blue-600"><div className="p-1.5 rounded-full hover:bg-blue-50 transition-colors"><UserPlus size={20} /></div><span className="text-[9px] font-bold">Staff</span></button>
-        <button onClick={async () => { const canvas = await html2canvas(exportRef.current, { scale: 2 }); const link = document.createElement('a'); link.download = 'roster.png'; link.href = canvas.toDataURL(); link.click(); }} className="flex flex-col items-center gap-1 text-gray-400 hover:text-pink-600"><div className="p-1.5 rounded-full hover:bg-pink-50 transition-colors"><ImageIcon size={20} /></div><span className="text-[9px] font-bold">PNG</span></button>
+        <button onClick={() => !isLocked && setShowDocManager(true)} className="flex flex-col items-center gap-1 text-gray-400 hover:text-blue-600">
+           <div className="p-1.5 rounded-full hover:bg-blue-50 transition-colors"><UserPlus size={20} /></div>
+           <span className="text-[9px] font-bold">Staff</span>
+        </button>
+        <button onClick={exportCSV} className="flex flex-col items-center gap-1 text-gray-400 hover:text-green-600">
+           <div className="p-1.5 rounded-full hover:bg-green-50 transition-colors"><FileText size={20} /></div>
+           <span className="text-[9px] font-bold">CSV</span>
+        </button>
       </nav>
-
-      <div className="fixed -left-[3000px] top-0 w-[1200px] bg-white text-black p-8 font-sans" ref={exportRef}>
-        <div className="text-3xl font-black text-center mb-6 uppercase border-b-4 border-black pb-4">Duty Roster: {cycle.startDate.toLocaleString('default', { month: 'short' })} - {cycle.endDate.toLocaleString('default', { month: 'short' })} {cycle.endDate.getFullYear()}</div>
-        {renderCalendarGrid(true)}
-      </div>
     </div>
   );
 }
