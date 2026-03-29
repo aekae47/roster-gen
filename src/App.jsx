@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   UserPlus, Lock, Unlock, Sun, Moon, 
   ChevronLeft, ChevronRight, FileText, 
@@ -57,6 +57,24 @@ export default function RosterGen() {
   const [showDocManager, setShowDocManager] = useState(false);
   const [pickingColorFor, setPickingColorFor] = useState(null); 
 
+  // Refs for "Click Outside" logic
+  const docManagerRef = useRef(null);
+  const dateEditorRef = useRef(null);
+  const loginModalRef = useRef(null);
+
+  // 1. Initial Load from Cache (Immediate)
+  useEffect(() => {
+    const cached = localStorage.getItem('roster_cache');
+    if (cached) {
+      const { doctors: d, assignments: a, notes: n, lastUpdated: lu } = JSON.parse(cached);
+      setDoctors(d || []);
+      setAssignments(a || {});
+      setNotes(n || {});
+      setLastUpdated(lu || null);
+    }
+  }, []);
+
+  // 2. Auth Listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -66,6 +84,7 @@ export default function RosterGen() {
     return () => unsubscribe();
   }, []);
 
+  // 3. Live Sync and Update Cache
   useEffect(() => {
     const rosterRef = doc(db, "rosters", "main_roster");
     return onSnapshot(rosterRef, (snap) => {
@@ -75,6 +94,8 @@ export default function RosterGen() {
         setAssignments(data.assignments || {});
         setNotes(data.notes || {});
         setLastUpdated(data.lastUpdated || null);
+        // Save to LocalStorage for next visit
+        localStorage.setItem('roster_cache', JSON.stringify(data));
       }
     });
   }, []);
@@ -94,13 +115,14 @@ export default function RosterGen() {
     if (!user) return;
     try {
       const rosterRef = doc(db, "rosters", "main_roster");
-      await setDoc(rosterRef, {
+      const payload = {
         doctors: updates.doctors || doctors,
         assignments: updates.assignments || assignments,
         notes: updates.notes || notes,
         startDay: 26,
         lastUpdated: new Date().toISOString()
-      }, { merge: true });
+      };
+      await setDoc(rosterRef, payload, { merge: true });
     } catch (e) { console.error("Error saving data: ", e); }
   };
 
@@ -318,7 +340,6 @@ export default function RosterGen() {
             </div>
           </div>
 
-          {/* Doctor Summary (Faculty Only) */}
           <div className="bg-white/80 dark:bg-gray-800/80 rounded-2xl p-4 shadow-lg border border-white/20 dark:border-gray-700">
             <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-100 dark:border-gray-700"><PieChart size={16} className="text-pink-500" /><h3 className="text-xs font-black uppercase text-gray-500 tracking-widest">Faculty Log</h3></div>
             <div className="space-y-1.5 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
@@ -332,9 +353,7 @@ export default function RosterGen() {
                         <span className="font-bold truncate w-24 flex-shrink-0 text-gray-700 dark:text-gray-300" style={{ fontFamily: '"PT Sans Narrow"', fontWeight: 700 }}>{doc.name}</span>
                         <span className="text-[10px] font-mono text-gray-500 truncate">{dateString}</span>
                       </div>
-                      <button onClick={() => navigator.clipboard.writeText(`${doc.name}: ${dateString}`)} className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md text-gray-400 hover:text-blue-500 transition-colors flex-shrink-0">
-                        <Copy size={14} />
-                      </button>
+                      <button onClick={() => navigator.clipboard.writeText(`${doc.name}: ${dateString}`)} className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md text-gray-400 hover:text-blue-500 transition-colors flex-shrink-0"><Copy size={14} /></button>
                    </div>
                  )
               })}
@@ -349,9 +368,12 @@ export default function RosterGen() {
         )}
       </main>
 
+      {/* MODALS */}
+      
+      {/* Login Modal */}
       {showLoginModal && (
-        <div className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-900 w-full max-w-sm rounded-2xl shadow-2xl p-6 border border-gray-100 dark:border-gray-800 relative">
+        <div className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowLoginModal(false)}>
+          <div ref={loginModalRef} onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-gray-900 w-full max-w-sm rounded-2xl shadow-2xl p-6 border border-gray-100 dark:border-gray-800 relative">
             <button onClick={() => setShowLoginModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X size={20} /></button>
             <h3 className="text-lg font-bold mb-4 text-gray-800 dark:text-gray-100">Admin Login</h3>
             <form onSubmit={handleLogin} className="space-y-4">
@@ -363,9 +385,10 @@ export default function RosterGen() {
         </div>
       )}
 
+      {/* Staff Manager */}
       {showDocManager && (
-        <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-900 w-full max-w-sm rounded-2xl shadow-2xl flex flex-col max-h-[85vh] border border-gray-100 dark:border-gray-800 relative">
+        <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowDocManager(false)}>
+          <div ref={docManagerRef} onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-gray-900 w-full max-w-sm rounded-2xl shadow-2xl flex flex-col max-h-[85vh] border border-gray-100 dark:border-gray-800 relative">
             {pickingColorFor && (
                <div className="absolute inset-0 z-[70] bg-white/95 dark:bg-gray-900/95 rounded-2xl flex flex-col items-center justify-center p-6"><h3 className="text-sm font-bold uppercase mb-4 text-gray-500">Select Color</h3><div className="grid grid-cols-5 gap-3">{PASTEL_COLORS.map(c => ( <button key={c} style={{backgroundColor: c}} className="w-10 h-10 rounded-full border-2 border-transparent hover:scale-110 shadow-sm transition-all" onClick={() => { setDoctors(doctors.map(d => d.id === pickingColorFor ? {...d, color: c} : d)); setPickingColorFor(null); }} /> ))}</div><button onClick={() => setPickingColorFor(null)} className="mt-6 text-xs font-bold text-gray-400 underline">Cancel</button></div>
             )}
@@ -386,9 +409,10 @@ export default function RosterGen() {
         </div>
       )}
 
+      {/* Date Editor */}
       {editingDay && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-900 w-full max-w-md rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-800 flex flex-col max-h-[90vh]">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => {saveToCloud(); setEditingDay(null);}}>
+          <div ref={dateEditorRef} onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-gray-900 w-full max-w-md rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-800 flex flex-col max-h-[90vh]">
              <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50 rounded-t-2xl"><div><h4 className="font-bold text-lg">{editingDay.dateObj.getDate()} {editingDay.dateObj.toLocaleString('default',{month:'short'})}</h4><p className="text-xs text-gray-400 font-bold uppercase">{editingDay.dateObj.toLocaleString('default',{weekday:'long'})}</p></div><button onClick={() => {saveToCloud(); setEditingDay(null);}} className="bg-gray-100 dark:bg-gray-700 p-1 rounded-full"><Check size={18} className="text-green-600"/></button></div>
              <div className="p-4 overflow-y-auto space-y-4">
                 <input className="w-full p-2 bg-gray-50 dark:bg-black border border-gray-200 dark:border-gray-700 rounded-lg text-sm outline-none" placeholder={getSundayUnit(editingDay.dateObj) || "Add a note..."} value={notes[editingDay.dateKey] || ''} onChange={(e) => setNotes({...notes, [editingDay.dateKey]: e.target.value})} />
@@ -403,6 +427,7 @@ export default function RosterGen() {
         </div>
       )}
 
+      {/* Footer Nav */}
       <nav className="fixed bottom-0 w-full bg-white/90 dark:bg-gray-900/90 backdrop-blur-lg border-t border-gray-200 dark:border-gray-800 p-3 z-50 flex justify-around items-center">
         <button onClick={() => !isLocked && setShowDocManager(true)} className="flex flex-col items-center gap-1 text-gray-400 hover:text-blue-600">
            <div className="p-1.5 rounded-full hover:bg-blue-50 transition-colors"><UserPlus size={20} /></div>
