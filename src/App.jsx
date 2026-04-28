@@ -161,7 +161,7 @@ export default function RosterGen() {
       const dateKey = date.toISOString().split('T')[0];
       const dateStr = date.toLocaleDateString();
       const dayStr = date.toLocaleString('default', { weekday: 'short' });
-      const noteStr = notes[dateKey] || getSundayUnit(date) || "";
+      const noteStr = notes[dateKey] || (date.getDay() === 0 ? getDayUnit(date) : "") || "";
       const docs = (assignments[dateKey] || [])
         .map(id => doctors.find(d => d.id === id)?.name)
         .filter(Boolean)
@@ -190,12 +190,28 @@ export default function RosterGen() {
     return { count, suns };
   };
 
-  const getSundayUnit = (date) => {
-    if (date.getDay() !== 0) return "";
-    const ref = new Date(2026, 1, 1);
-    const diffWeeks = Math.floor(Math.ceil((date - ref) / 86400000) / 7);
-    return (Math.abs(diffWeeks) % 2 === 0) ? "Unit 2" : "Unit 1";
+  const getDayUnit = (date) => {
+    const day = date.getDay();
+    if (day === 1 || day === 3 || day === 5) return "Unit 1";
+    if (day === 2 || day === 4 || day === 6) return "Unit 2";
+    if (day === 0) {
+      const ref = new Date(2026, 0, 4); // Jan 4, 2026 is Unit 1
+      const diffWeeks = Math.floor(Math.round((date - ref) / 86400000) / 7);
+      return (Math.abs(diffWeeks) % 2 === 0) ? "Unit 1" : "Unit 2";
+    }
+    return "";
   };
+
+  const cycleStats = useMemo(() => {
+    let u1 = 0, u1S = 0, u2 = 0, u2S = 0;
+    cycle.dates.forEach(d => {
+      const u = getDayUnit(d);
+      const isS = d.getDay() === 0;
+      if (u === "Unit 1") { u1++; if (isS) u1S++; }
+      else if (u === "Unit 2") { u2++; if (isS) u2S++; }
+    });
+    return { u1, u1S, u2, u2S };
+  }, [cycle.dates]);
 
   const handleCellClick = (dateObj, dateKey) => {
     if (isLocked) return;
@@ -242,7 +258,7 @@ export default function RosterGen() {
           const assignedDocs = (assignments[dateKey] || [])
             .map(id => doctors.find(d => d.id === id)).filter(Boolean)
             .sort((a, b) => CATEGORIES[a.category].rank - CATEGORIES[b.category].rank);
-          const note = notes[dateKey] ?? getSundayUnit(date);
+          const note = notes[dateKey] ?? (date.getDay() === 0 ? getDayUnit(date) : "");
 
           let cellBg = "bg-white/90 dark:bg-gray-900/80";
           if (isSun) cellBg = "bg-red-50/70 dark:bg-red-900/20";
@@ -281,6 +297,8 @@ export default function RosterGen() {
           to { opacity: 1; transform: translateY(0); }
         }
         .animate-fade-in-down { animation: fadeInDown 0.7s ease-out forwards; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
       
       <header className="fixed top-0 w-full z-40 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-white/20 dark:border-gray-700 shadow-sm px-3 py-2 flex justify-between items-center">
@@ -301,35 +319,54 @@ export default function RosterGen() {
 
       <main className="relative z-10 pt-16 pb-24 px-2 max-w-5xl mx-auto">
         {todayDocs.length > 0 && (
-          <div className="mb-6 animate-fade-in-down">
-            <div className="flex items-center gap-2 mb-3 px-1">
-              <div className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-500">
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              </div>
-              <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">On Duty Today</h2>
-            </div>
-            <div className="flex flex-wrap gap-3 px-1">
-              {todayDocs.map(doc => (
-                <div key={doc.id} className="flex items-center gap-3 bg-white/60 dark:bg-gray-800/60 backdrop-blur-md border border-white/20 dark:border-gray-700 rounded-2xl px-4 py-2 shadow-sm hover:shadow-md transition-all">
-                  <div className="w-1 h-6 rounded-full" style={{ backgroundColor: doc.color }} />
-                  <div className="flex flex-col">
-                    <span className={cn("text-[7px] font-black uppercase leading-none mb-0.5", CATEGORIES[doc.category].color)}>{CATEGORIES[doc.category].label}</span>
-                    <span className="text-xs font-bold text-gray-700 dark:text-gray-200" style={{ fontFamily: '"PT Sans Narrow"', fontWeight: 700 }}>{doc.name}</span>
-                  </div>
+          <div className="mb-4 animate-fade-in-down">
+            <div className="flex items-center gap-3 overflow-x-auto custom-scrollbar pb-2 px-1 no-scrollbar">
+              <div className="flex items-center gap-2 flex-shrink-0 bg-white/40 dark:bg-gray-800/40 backdrop-blur-md border border-white/20 dark:border-gray-700 rounded-xl px-3 py-2 shadow-sm">
+                <div className="relative flex items-center justify-center w-2 h-2">
+                  <div className="absolute w-full h-full rounded-full bg-emerald-500 animate-ping opacity-75" />
+                  <div className="relative w-1.5 h-1.5 rounded-full bg-emerald-500" />
                 </div>
-              ))}
+                <h2 className="text-[9px] font-black uppercase tracking-widest text-gray-500 dark:text-gray-400 whitespace-nowrap">On Duty</h2>
+              </div>
+              
+              <div className="flex gap-2">
+                {todayDocs.map(doc => (
+                  <div key={doc.id} className="flex items-center gap-2.5 bg-white/60 dark:bg-gray-800/60 backdrop-blur-md border border-white/20 dark:border-gray-700 rounded-xl px-3 py-1.5 shadow-sm hover:shadow-md transition-all flex-shrink-0">
+                    <div className="w-1 h-5 rounded-full" style={{ backgroundColor: doc.color }} />
+                    <div className="flex flex-col">
+                      <span className={cn("text-[6px] font-black uppercase leading-none mb-0.5", CATEGORIES[doc.category].color)}>{CATEGORIES[doc.category].label}</span>
+                      <span className="text-[11px] font-bold text-gray-700 dark:text-gray-200" style={{ fontFamily: '"PT Sans Narrow"', fontWeight: 700 }}>{doc.name}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
 
-        <div className="flex justify-between items-end mb-4 px-1">
-          <div>
-            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block mb-1">Current Cycle</span>
-            <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{cycle.startDate.toLocaleString('default', { month: 'short', year: 'numeric' })}</span>
+        <div className="flex justify-between items-center mb-4 px-1">
+          <div className="flex flex-col">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Current Cycle</span>
+            <span className="text-xs font-black text-gray-700 dark:text-gray-200">{cycle.startDate.toLocaleString('default', { month: 'short', year: 'numeric' })}</span>
           </div>
-          <div className="flex gap-1 bg-white dark:bg-gray-800 rounded-full p-1 shadow-sm border border-gray-200 dark:border-gray-700">
-             <button onClick={() => { const d = new Date(currentDate); d.setMonth(d.getMonth()-1); setCurrentDate(d); }} className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"><ChevronLeft size={16}/></button>
-             <button onClick={() => { const d = new Date(currentDate); d.setMonth(d.getMonth()+1); setCurrentDate(d); }} className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"><ChevronRight size={16}/></button>
+          
+          <div className="flex gap-3">
+            <div className="flex items-center gap-2 bg-white dark:bg-gray-800 px-3 py-1.5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+               <div className="flex flex-col items-center">
+                 <span className="text-[7px] font-black uppercase text-rose-500 leading-none">Unit 1</span>
+                 <span className="text-[11px] font-bold text-gray-700 dark:text-gray-200">{cycleStats.u1} <span className="text-[8px] text-gray-400">({cycleStats.u1S}S)</span></span>
+               </div>
+               <div className="w-px h-4 bg-gray-100 dark:bg-gray-700 mx-1" />
+               <div className="flex flex-col items-center">
+                 <span className="text-[7px] font-black uppercase text-emerald-500 leading-none">Unit 2</span>
+                 <span className="text-[11px] font-bold text-gray-700 dark:text-gray-200">{cycleStats.u2} <span className="text-[8px] text-gray-400">({cycleStats.u2S}S)</span></span>
+               </div>
+            </div>
+            
+            <div className="flex gap-1 bg-white dark:bg-gray-800 rounded-full p-1 shadow-sm border border-gray-200 dark:border-gray-700 h-fit self-center">
+               <button onClick={() => { const d = new Date(currentDate); d.setMonth(d.getMonth()-1); setCurrentDate(d); }} className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"><ChevronLeft size={16}/></button>
+               <button onClick={() => { const d = new Date(currentDate); d.setMonth(d.getMonth()+1); setCurrentDate(d); }} className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"><ChevronRight size={16}/></button>
+            </div>
           </div>
         </div>
 
@@ -453,7 +490,7 @@ export default function RosterGen() {
           <div ref={dateEditorRef} onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-gray-900 w-full max-w-md rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-800 flex flex-col max-h-[90vh]">
              <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50 rounded-t-2xl"><div><h4 className="font-bold text-lg">{editingDay.dateObj.getDate()} {editingDay.dateObj.toLocaleString('default',{month:'short'})}</h4><p className="text-xs text-gray-400 font-bold uppercase">{editingDay.dateObj.toLocaleString('default',{weekday:'long'})}</p></div><button onClick={() => {saveToCloud(); setEditingDay(null);}} className="bg-gray-100 dark:bg-gray-700 p-1 rounded-full"><Check size={18} className="text-green-600"/></button></div>
              <div className="p-4 overflow-y-auto space-y-4">
-                <input className="w-full p-2 bg-gray-50 dark:bg-black border border-gray-200 dark:border-gray-700 rounded-lg text-sm outline-none" placeholder={getSundayUnit(editingDay.dateObj) || "Add a note..."} value={notes[editingDay.dateKey] || ''} onChange={(e) => setNotes({...notes, [editingDay.dateKey]: e.target.value})} />
+                <input className="w-full p-2 bg-gray-50 dark:bg-black border border-gray-200 dark:border-gray-700 rounded-lg text-sm outline-none" placeholder={(editingDay.dateObj.getDay() === 0 ? getDayUnit(editingDay.dateObj) : "") || "Add a note..."} value={notes[editingDay.dateKey] || ''} onChange={(e) => setNotes({...notes, [editingDay.dateKey]: e.target.value})} />
                 <div className="grid grid-cols-2 gap-3">
                   {Object.entries(CATEGORIES).map(([catKey, cat]) => (
                     <div key={catKey} className="space-y-1"><div className={cn("text-[10px] font-black uppercase mb-1", cat.color)}>{cat.label}</div><div className="flex flex-col gap-1">{doctors.filter(d => d.category === catKey).map(doc => { const isSelected = (assignments[editingDay.dateKey] || []).includes(doc.id); return ( <button key={doc.id} onClick={() => toggleDocAssignment(doc.id)} className={cn("w-full flex items-center justify-between p-1.5 rounded-lg border transition-all", isSelected ? "bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800" : "bg-white dark:bg-gray-800 border-transparent")}><div className="flex items-center gap-1.5 overflow-hidden"><div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{backgroundColor: doc.color}}/><span className="text-[11px] font-bold text-gray-700 dark:text-gray-300 truncate" style={{ fontFamily: '"PT Sans Narrow"', fontWeight: 700 }}>{doc.name}</span></div>{isSelected && <Check size={12} className="text-blue-600"/>}</button> )})}</div></div>
