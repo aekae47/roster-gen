@@ -195,7 +195,7 @@ export default function RosterGen() {
     if (day === 1 || day === 3 || day === 5) return "Unit 1";
     if (day === 2 || day === 4 || day === 6) return "Unit 2";
     if (day === 0) {
-      const ref = new Date(2026, 0, 4); // Jan 4, 2026 is Unit 1
+      const ref = new Date(2026, 3, 19); // April 19, 2026 is Unit 1
       const diffWeeks = Math.floor(Math.round((date - ref) / 86400000) / 7);
       return (Math.abs(diffWeeks) % 2 === 0) ? "Unit 1" : "Unit 2";
     }
