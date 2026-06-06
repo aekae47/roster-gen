@@ -290,8 +290,8 @@ export default function RosterGen() {
           <thead>
             <tr className="bg-gray-100 dark:bg-gray-800 text-[10px] uppercase text-gray-500 print:bg-transparent print:text-black print:border-b print:border-black print:text-[11pt]">
               <th className="p-2 border-b border-gray-200 dark:border-gray-700 w-10 print:border-black print:px-1 print:py-0.5 text-center font-normal italic print:italic">S.No.</th>
-              <th className="p-2 border-b border-gray-200 dark:border-gray-700 w-20 print:border-black print:px-1 print:py-0.5 font-normal italic print:italic">Date</th>
-              <th className="p-2 border-b border-gray-200 dark:border-gray-700 w-16 print:border-black print:px-1 print:py-0.5 font-normal italic print:italic">Day</th>
+              <th className="p-2 border-b border-gray-200 dark:border-gray-700 w-14 print:border-black print:px-1 print:py-0.5 font-normal italic print:italic whitespace-nowrap">Date</th>
+              <th className="p-2 border-b border-gray-200 dark:border-gray-700 w-14 print:border-black print:px-1 print:py-0.5 font-normal italic print:italic whitespace-nowrap">Day</th>
               <th className="p-2 border-b border-gray-200 dark:border-gray-700 print:border-black print:px-1 print:py-0.5 font-normal italic print:italic">Faculty</th>
               <th className="p-2 border-b border-gray-200 dark:border-gray-700 print:border-black print:px-1 print:py-0.5 font-normal italic print:italic">PG</th>
             </tr>
@@ -308,11 +308,23 @@ export default function RosterGen() {
               const dayStr = date.toLocaleString('default', { weekday: 'short' });
               const unitStr = isSun ? (getDayUnit(date) === 'Unit 1' ? ' (I)' : (getDayUnit(date) === 'Unit 2' ? ' (II)' : '')) : '';
               
-              // Zebra striping for print: every even row gets a light gray bg
-              const printZebra = index % 2 !== 0 ? "print:bg-[#f2f2f2]" : "print:bg-white";
+              // Determine row background, separating screen and print explicitly
+              let screenBg = index % 2 !== 0 ? "bg-blue-50/40 dark:bg-blue-900/10" : "bg-white dark:bg-gray-900";
+              let printBg = index % 2 !== 0 ? "print:bg-[#ebf4ff] print:!bg-[#ebf4ff]" : "print:bg-white print:!bg-white"; // Light blue zebra
+              
+              if (isSun) {
+                 screenBg = "bg-red-50 dark:bg-red-900/20"; // Light red sunday
+                 printBg = "print:bg-[#fff0f0] print:!bg-[#fff0f0]";
+              }
+              
+              if (isToday) {
+                 screenBg = "bg-amber-100 dark:bg-amber-900/30"; // Today highlight only for screen
+              }
+              
+              const rowBg = `${screenBg} ${printBg}`;
               
               return (
-                <tr key={dateKey} onClick={() => handleCellClick(date, dateKey)} className={cn("border-b border-gray-100 dark:border-gray-800/50 transition-colors group print:border-none", printZebra, !isLocked && "cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20", isToday && "bg-amber-50 dark:bg-amber-900/20")}>
+                <tr key={dateKey} onClick={() => handleCellClick(date, dateKey)} className={cn("border-b border-gray-100 dark:border-gray-800/50 transition-colors group print:border-none", rowBg, !isLocked && "cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800")}>
                   
                   {/* S.No. */}
                   <td className="p-2 align-middle print:py-[2px] print:px-1 text-center">
@@ -321,29 +333,29 @@ export default function RosterGen() {
                   
                   {/* Date */}
                   <td className="p-2 align-middle print:py-[2px] print:px-1">
-                     <span className={cn("text-xs font-mono print:text-[11pt] print:font-sans", isSun ? "text-red-500 print:text-red-600" : "text-gray-700 dark:text-gray-300 print:text-black")}>
+                     <span className={cn("text-xs font-mono print:text-[11pt] print:font-sans text-gray-700 dark:text-gray-300 print:text-black", isSun && "font-bold")}>
                         <span className="font-bold">{date.getDate().toString().padStart(2, '0')}</span>-{String(date.getMonth() + 1).padStart(2, '0')}
                      </span>
                   </td>
                   
                   {/* Day */}
-                  <td className="p-2 align-middle print:py-[2px] print:px-1">
-                     <span className={cn("text-[10px] uppercase print:text-[11pt] print:capitalize print:font-sans", isSun ? "text-red-400 font-bold print:text-red-600" : "text-gray-500 print:text-black")}>
-                        {dayStr}<span className="hidden print:inline">{unitStr}</span>
+                  <td className="p-2 align-middle print:py-[2px] print:px-1 whitespace-nowrap">
+                     <span className={cn("text-[10px] uppercase print:text-[11pt] print:capitalize print:font-sans text-gray-600 print:text-black", isSun && "font-bold text-red-500")}>
+                        {dayStr}<span className="inline whitespace-nowrap">{unitStr}</span>
                      </span>
                   </td>
                   
                   {/* Faculty */}
                   <td className="p-2 align-middle border-l border-gray-50 dark:border-gray-800/30 print:border-none print:py-[1px] print:px-1">
                     <div className="flex flex-wrap gap-1 print:gap-0">
-                      {fac.map((d, i) => <span key={d.id} className="print-doc-badge text-[11px] font-bold shadow-sm print:uppercase print:text-[9.5pt]" style={{ '--doc-bg': d.color + '99', backgroundColor: 'var(--doc-bg)', color: '#000', padding: '1px 5px', borderRadius: '4px', fontFamily: '"PT Sans Narrow", sans-serif' }}>{d.name.toUpperCase()}{i < fac.length - 1 ? <span className="hidden print:inline">,&nbsp;</span> : ''}</span>)}
+                      {fac.map((d, i) => <span key={d.id} className="print-doc-badge text-[11px] font-bold shadow-sm print:uppercase print:text-[9.5pt]" style={{ '--doc-bg': d.color + '99', backgroundColor: 'var(--doc-bg)', color: '#000', padding: '1px 5px', borderRadius: '4px', fontFamily: '"PT Sans Narrow", sans-serif' }}>{(d.longName || d.name)}{i < fac.length - 1 ? <span className="hidden print:inline">,&nbsp;</span> : ''}</span>)}
                     </div>
                   </td>
                   
                   {/* PG */}
                   <td className="p-2 align-middle border-l border-gray-50 dark:border-gray-800/30 print:border-none print:py-[1px] print:px-1">
                     <div className="flex flex-wrap gap-1 print:gap-0">
-                      {pgs.map((d, i) => <span key={d.id} className="print-doc-badge text-[11px] font-bold shadow-sm print:uppercase print:text-[9.5pt]" style={{ '--doc-bg': d.color + '99', backgroundColor: 'var(--doc-bg)', color: '#000', padding: '1px 5px', borderRadius: '4px', fontFamily: '"PT Sans Narrow", sans-serif' }}>{d.name.toUpperCase()}{i < pgs.length - 1 ? <span className="hidden print:inline">,&nbsp;</span> : ''}</span>)}
+                      {pgs.map((d, i) => <span key={d.id} className="print-doc-badge text-[11px] font-bold shadow-sm print:uppercase print:text-[9.5pt]" style={{ '--doc-bg': d.color + '99', backgroundColor: 'var(--doc-bg)', color: '#000', padding: '1px 5px', borderRadius: '4px', fontFamily: '"PT Sans Narrow", sans-serif' }}>{(d.longName || d.name)}{i < pgs.length - 1 ? <span className="hidden print:inline">,&nbsp;</span> : ''}</span>)}
                     </div>
                   </td>
                 </tr>
@@ -624,7 +636,14 @@ export default function RosterGen() {
                 <div key={catKey} className="space-y-2"><div className="flex justify-between items-end border-b border-gray-100 dark:border-gray-800 pb-1"><span className={cn("text-[10px] font-black uppercase tracking-widest", CATEGORIES[catKey].color)}>{CATEGORIES[catKey].label}</span><button onClick={() => setDoctors([...doctors, { id: Date.now().toString(), name: "Dr. Name", category: catKey, color: PASTEL_COLORS[doctors.length % PASTEL_COLORS.length] }])} className="text-blue-500 text-[10px] font-bold bg-blue-50 px-2 py-0.5 rounded">+ ADD</button></div>
                   <div className="grid grid-cols-2 gap-2">
                     {doctors.filter(d => d.category === catKey).map(doc => (
-                      <div key={doc.id} className="relative flex items-center bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-700 overflow-hidden pr-8"><button onClick={() => setPickingColorFor(doc.id)} className="ml-1.5 w-5 h-5 rounded-full shadow-sm border border-black/10 flex-shrink-0" style={{ backgroundColor: doc.color }}></button><input className="w-full bg-transparent text-[11px] p-2 outline-none font-bold" style={{ fontFamily: '"PT Sans Narrow"', fontWeight: 700 }} value={doc.name} onChange={(e) => setDoctors(doctors.map(d => d.id === doc.id ? {...d, name: e.target.value} : d))} /><button onClick={() => setDoctors(doctors.filter(d => d.id !== doc.id))} className="absolute right-2 text-red-400 hover:text-red-600"><Trash2 size={12}/></button></div>
+                      <div key={doc.id} className="relative flex items-start bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-700 overflow-hidden pr-8 py-1">
+                        <button onClick={() => setPickingColorFor(doc.id)} className="ml-1.5 mt-1.5 w-5 h-5 rounded-full shadow-sm border border-black/10 flex-shrink-0" style={{ backgroundColor: doc.color }}></button>
+                        <div className="flex flex-col w-full ml-1 border-l border-gray-200 dark:border-gray-700 pl-1 my-1">
+                          <input className="w-full bg-transparent text-[11px] px-2 py-0.5 outline-none font-bold" placeholder="Short Name" style={{ fontFamily: '"PT Sans Narrow"', fontWeight: 700 }} value={doc.name} onChange={(e) => setDoctors(doctors.map(d => d.id === doc.id ? {...d, name: e.target.value} : d))} />
+                          <input className="w-full bg-transparent text-[9px] px-2 py-0.5 outline-none text-gray-500" placeholder="Long Name (Optional)" value={doc.longName || ''} onChange={(e) => setDoctors(doctors.map(d => d.id === doc.id ? {...d, longName: e.target.value} : d))} />
+                        </div>
+                        <button onClick={() => setDoctors(doctors.filter(d => d.id !== doc.id))} className="absolute right-2 top-3 text-red-400 hover:text-red-600"><Trash2 size={12}/></button>
+                      </div>
                     ))}
                   </div>
                 </div>
