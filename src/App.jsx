@@ -303,7 +303,7 @@ export default function RosterGen() {
               const assignedDocs = (assignments[dateKey] || []).map(id => doctors.find(d => d.id === id)).filter(Boolean);
               
               const fac = assignedDocs.filter(d => d.category === 'faculty');
-              const pgs = assignedDocs.filter(d => d.category === 'senior_pg' || d.category === 'junior_pg');
+              const pgs = assignedDocs.filter(d => d.category === 'senior_pg' || d.category === 'junior_pg').sort((a, b) => a.category === 'senior_pg' ? -1 : 1);
               const isSun = date.getDay() === 0;
               const dayStr = date.toLocaleString('default', { weekday: 'short' });
               const unitStr = isSun ? (getDayUnit(date) === 'Unit 1' ? ' (I)' : (getDayUnit(date) === 'Unit 2' ? ' (II)' : '')) : '';
@@ -336,14 +336,14 @@ export default function RosterGen() {
                   {/* Faculty */}
                   <td className="p-2 align-middle border-l border-gray-50 dark:border-gray-800/30 print:border-none print:py-[1px] print:px-1">
                     <div className="flex flex-wrap gap-1 print:gap-0">
-                      {fac.map((d, i) => <span key={d.id} className="print-doc-badge text-[11px] font-bold shadow-sm print:uppercase print:text-[9.5pt]" style={{ '--doc-bg': d.color + '99', backgroundColor: 'var(--doc-bg)', color: '#000', padding: '1px 5px', borderRadius: '4px', fontFamily: '"PT Sans Narrow", sans-serif' }}>{d.name.toUpperCase()}{i < fac.length - 1 ? <span className="hidden print:inline">, </span> : ''}</span>)}
+                      {fac.map((d, i) => <span key={d.id} className="print-doc-badge text-[11px] font-bold shadow-sm print:uppercase print:text-[9.5pt]" style={{ '--doc-bg': d.color + '99', backgroundColor: 'var(--doc-bg)', color: '#000', padding: '1px 5px', borderRadius: '4px', fontFamily: '"PT Sans Narrow", sans-serif' }}>{d.name.toUpperCase()}{i < fac.length - 1 ? <span className="hidden print:inline">,&nbsp;</span> : ''}</span>)}
                     </div>
                   </td>
                   
                   {/* PG */}
                   <td className="p-2 align-middle border-l border-gray-50 dark:border-gray-800/30 print:border-none print:py-[1px] print:px-1">
                     <div className="flex flex-wrap gap-1 print:gap-0">
-                      {pgs.map((d, i) => <span key={d.id} className="print-doc-badge text-[11px] font-bold shadow-sm print:uppercase print:text-[9.5pt]" style={{ '--doc-bg': d.color + '99', backgroundColor: 'var(--doc-bg)', color: '#000', padding: '1px 5px', borderRadius: '4px', fontFamily: '"PT Sans Narrow", sans-serif' }}>{d.name.toUpperCase()}{i < pgs.length - 1 ? <span className="hidden print:inline">, </span> : ''}</span>)}
+                      {pgs.map((d, i) => <span key={d.id} className="print-doc-badge text-[11px] font-bold shadow-sm print:uppercase print:text-[9.5pt]" style={{ '--doc-bg': d.color + '99', backgroundColor: 'var(--doc-bg)', color: '#000', padding: '1px 5px', borderRadius: '4px', fontFamily: '"PT Sans Narrow", sans-serif' }}>{d.name.toUpperCase()}{i < pgs.length - 1 ? <span className="hidden print:inline">,&nbsp;</span> : ''}</span>)}
                     </div>
                   </td>
                 </tr>
