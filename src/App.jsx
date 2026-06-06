@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   UserPlus, Lock, Unlock, Sun, Moon, 
   ChevronLeft, ChevronRight, FileText, 
-  Trash2, Check, X, Eraser, BarChart3, PieChart, Palette, Copy
+  Trash2, Check, X, Eraser, BarChart3, PieChart, Palette, Copy,
+  Calendar, Table, Printer
 } from 'lucide-react';
 import { initializeApp } from "firebase/app";
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, onSnapshot, setDoc } from "firebase/firestore";
@@ -59,6 +60,7 @@ export default function RosterGen() {
   const [showDocManager, setShowDocManager] = useState(false);
   const [pickingColorFor, setPickingColorFor] = useState(null); 
   const [toast, setToast] = useState(null);
+  const [viewMode, setViewMode] = useState('calendar');
 
   const todayDocs = useMemo(() => {
     const d = new Date();
@@ -266,6 +268,106 @@ export default function RosterGen() {
     }
   };
 
+  const renderTableView = () => {
+    const todayStr = new Date().toDateString();
+    
+    // Determine end month if different from start month for the header
+    const startMonthStr = cycle.startDate.toLocaleString('default', { month: 'short' }).toUpperCase();
+    const endMonthStr = cycle.endDate.toLocaleString('default', { month: 'short' }).toUpperCase();
+    const monthHeader = startMonthStr === endMonthStr ? startMonthStr : `${startMonthStr} - ${endMonthStr}`;
+    const yearStr = cycle.endDate.getFullYear();
+
+    return (
+      <div className="w-full bg-white dark:bg-gray-900 rounded-2xl overflow-hidden shadow-2xl border border-gray-200 dark:border-gray-800 print:shadow-none print:border-none print-table-container print:rounded-none flex flex-col print:bg-white print:m-0 print:p-0">
+        
+        {/* Print Header */}
+        <div className="hidden print:block text-center mb-2 mt-0">
+          <h1 className="text-[16pt] font-extrabold text-black tracking-wide" style={{ fontFamily: 'Montserrat, sans-serif' }}>DEPARTMENT OF GENERAL MEDICINE &ndash; OHRC</h1>
+          <h2 className="text-[10pt] text-black mt-1 uppercase font-bold" style={{ fontFamily: 'Montserrat, sans-serif' }}>DUTY ROSTER FOR THE MONTH OF {monthHeader} {yearStr}</h2>
+        </div>
+
+        <table className="w-full text-left print-table" style={{ fontFamily: 'Montserrat, sans-serif' }}>
+          <thead>
+            <tr className="bg-gray-100 dark:bg-gray-800 text-[10px] uppercase text-gray-500 print:bg-transparent print:text-black print:border-b print:border-black print:text-[11pt]">
+              <th className="p-2 border-b border-gray-200 dark:border-gray-700 w-10 print:border-black print:px-1 print:py-0.5 text-center font-normal italic print:italic">S.No.</th>
+              <th className="p-2 border-b border-gray-200 dark:border-gray-700 w-20 print:border-black print:px-1 print:py-0.5 font-normal italic print:italic">Date</th>
+              <th className="p-2 border-b border-gray-200 dark:border-gray-700 w-16 print:border-black print:px-1 print:py-0.5 font-normal italic print:italic">Day</th>
+              <th className="p-2 border-b border-gray-200 dark:border-gray-700 print:border-black print:px-1 print:py-0.5 font-normal italic print:italic">Faculty</th>
+              <th className="p-2 border-b border-gray-200 dark:border-gray-700 print:border-black print:px-1 print:py-0.5 font-normal italic print:italic">PG</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cycle.dates.map((date, index) => {
+              const dateKey = date.toISOString().split('T')[0];
+              const isToday = date.toDateString() === todayStr;
+              const assignedDocs = (assignments[dateKey] || []).map(id => doctors.find(d => d.id === id)).filter(Boolean);
+              
+              const fac = assignedDocs.filter(d => d.category === 'faculty');
+              const pgs = assignedDocs.filter(d => d.category === 'senior_pg' || d.category === 'junior_pg');
+              const isSun = date.getDay() === 0;
+              const dayStr = date.toLocaleString('default', { weekday: 'short' });
+              
+              // Zebra striping for print: every even row gets a light gray bg
+              const printZebra = index % 2 !== 0 ? "print:bg-[#f2f2f2]" : "print:bg-white";
+              
+              return (
+                <tr key={dateKey} onClick={() => handleCellClick(date, dateKey)} className={cn("border-b border-gray-100 dark:border-gray-800/50 transition-colors group print:border-none", printZebra, !isLocked && "cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20", isToday && "bg-amber-50 dark:bg-amber-900/20")}>
+                  
+                  {/* S.No. */}
+                  <td className="p-2 align-middle print:py-[2px] print:px-1 text-center">
+                     <span className="text-xs text-gray-500 print:text-black print:text-[10pt] font-sans italic">{index + 1}</span>
+                  </td>
+                  
+                  {/* Date */}
+                  <td className="p-2 align-middle print:py-[2px] print:px-1">
+                     <span className={cn("text-xs font-mono print:text-[11pt] print:font-sans", isSun ? "text-red-500 print:text-red-600" : "text-gray-700 dark:text-gray-300 print:text-black")}>
+                        <span className="font-bold">{date.getDate().toString().padStart(2, '0')}</span>-{String(date.getMonth() + 1).padStart(2, '0')}
+                     </span>
+                  </td>
+                  
+                  {/* Day */}
+                  <td className="p-2 align-middle print:py-[2px] print:px-1">
+                     <span className={cn("text-[10px] uppercase print:text-[11pt] print:capitalize print:font-sans", isSun ? "text-red-400 font-bold print:text-red-600" : "text-gray-500 print:text-black")}>
+                        {dayStr}
+                     </span>
+                  </td>
+                  
+                  {/* Faculty */}
+                  <td className="p-2 align-middle border-l border-gray-50 dark:border-gray-800/30 print:border-none print:py-[1px] print:px-1">
+                    <div className="flex flex-wrap gap-1 print:gap-0">
+                      {fac.map((d, i) => <span key={d.id} className="print-doc-badge text-[11px] font-bold shadow-sm print:uppercase print:text-[9.5pt]" style={{ '--doc-bg': d.color + '99', backgroundColor: 'var(--doc-bg)', color: '#000', padding: '1px 5px', borderRadius: '4px', fontFamily: '"PT Sans Narrow", sans-serif' }}>{d.name.toUpperCase()}{i < fac.length - 1 ? <span className="hidden print:inline">, </span> : ''}</span>)}
+                    </div>
+                  </td>
+                  
+                  {/* PG */}
+                  <td className="p-2 align-middle border-l border-gray-50 dark:border-gray-800/30 print:border-none print:py-[1px] print:px-1">
+                    <div className="flex flex-wrap gap-1 print:gap-0">
+                      {pgs.map((d, i) => <span key={d.id} className="print-doc-badge text-[11px] font-bold shadow-sm print:uppercase print:text-[9.5pt]" style={{ '--doc-bg': d.color + '99', backgroundColor: 'var(--doc-bg)', color: '#000', padding: '1px 5px', borderRadius: '4px', fontFamily: '"PT Sans Narrow", sans-serif' }}>{d.name.toUpperCase()}{i < pgs.length - 1 ? <span className="hidden print:inline">, </span> : ''}</span>)}
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+
+        {/* Print Footer */}
+        <div className="hidden print:flex justify-between items-end mt-8 pt-4 px-12 pb-2">
+           <div className="text-center">
+             <div className="w-56 border-t border-black mb-1 mx-auto"></div>
+             <p className="font-bold text-[10pt]" style={{ fontFamily: 'Montserrat, sans-serif' }}>DR. MOHD. ABUBABAKAR</p>
+             <p className="text-[10pt]" style={{ fontFamily: 'Montserrat, sans-serif' }}>PROFESSOR & HOD</p>
+           </div>
+           <div className="text-center">
+             <div className="w-56 border-t border-black mb-1 mx-auto"></div>
+             <p className="font-bold text-[10pt]" style={{ fontFamily: 'Montserrat, sans-serif' }}>DR. SUHAIL BIN AHMED</p>
+             <p className="text-[10pt]" style={{ fontFamily: 'Montserrat, sans-serif' }}>PROFESSOR</p>
+           </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderCalendarGrid = () => {
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     let offset = cycle.dates[0].getDay() - 1;
@@ -314,9 +416,9 @@ export default function RosterGen() {
   };
 
   return (
-    <div className={cn("min-h-screen transition-all duration-300 font-sans", isDarkMode ? "dark bg-gray-900 text-gray-100" : "bg-slate-50 text-gray-800")}>
+    <div className={cn("print-root min-h-screen transition-all duration-300 font-sans", isDarkMode ? "dark bg-gray-900 text-gray-100" : "bg-slate-50 text-gray-800")}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=PT+Sans+Narrow:wght@400;700&family=Source+Code+Pro:wght@600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Montserrat:ital,wght@0,400;0,700;0,800;1,400&family=PT+Sans+Narrow:wght@400;700&family=Source+Code+Pro:wght@600&display=swap');
         .custom-scrollbar::-webkit-scrollbar { height: 4px; width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
         .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; }
@@ -332,9 +434,20 @@ export default function RosterGen() {
         .animate-fade-in-up { animation: fadeInUp 0.3s ease-out forwards; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        @media print {
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; font-family: 'Montserrat', sans-serif !important; }
+          @page { size: letter portrait; margin: 0; }
+          html, body, #root, .print-root { height: auto !important; min-height: 0 !important; margin: 0; padding: 0; background: white !important; background-color: white !important; box-sizing: border-box; }
+          body { padding: 0.4in !important; }
+          header, nav, .print-hide { display: none !important; }
+          main { padding: 0 !important; margin: 0 !important; width: 100% !important; max-width: none !important; display: block; box-sizing: border-box; }
+          .print-table { width: 100%; border-collapse: collapse; }
+          .print-table th, .print-table td { padding-top: 3px !important; padding-bottom: 3px !important; font-size: 10pt !important; line-height: 1.3 !important; }
+          .print-doc-badge { background-color: transparent !important; padding: 0 !important; font-weight: 700 !important; letter-spacing: -0.1px; box-shadow: none !important; }
+        }
       `}</style>
       
-      <header className="fixed top-0 w-full z-40 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-white/20 dark:border-gray-700 shadow-sm px-3 py-2 flex justify-between items-center">
+      <header className="fixed top-0 w-full z-40 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-white/20 dark:border-gray-700 shadow-sm px-3 py-2 flex justify-between items-center print-hide">
         <div className="flex items-center gap-3">
           <div className="bg-gradient-to-tr from-blue-600 to-purple-600 text-white p-1.5 rounded-lg shadow-lg"><BarChart3 size={18} /></div>
           <h1 className="text-xl font-black tracking-tighter bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">RosterGen</h1>
@@ -351,8 +464,8 @@ export default function RosterGen() {
       </header>
 
       <main className="relative z-10 pt-16 pb-24 px-2 max-w-5xl mx-auto">
-        {todayDocs.length > 0 && (
-          <div className="mb-4 animate-fade-in-down">
+        {viewMode === 'calendar' && todayDocs.length > 0 && (
+          <div className="mb-4 animate-fade-in-down print-hide">
             <div className="flex items-center gap-3 overflow-x-auto custom-scrollbar pb-2 px-1 no-scrollbar">
               <div className="flex items-center gap-2 flex-shrink-0 bg-white/40 dark:bg-gray-800/40 backdrop-blur-md border border-white/20 dark:border-gray-700 rounded-xl px-3 py-2 shadow-sm">
                 <div className="relative flex items-center justify-center w-2 h-2">
@@ -377,7 +490,7 @@ export default function RosterGen() {
           </div>
         )}
 
-        <div className="flex justify-between items-center mb-4 px-1">
+        <div className="flex justify-between items-center mb-4 px-1 print-hide">
           <div className="flex flex-col">
             <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Current Cycle</span>
             <span className="text-xs font-black text-gray-700 dark:text-gray-200">{cycle.startDate.toLocaleString('default', { month: 'short', year: 'numeric' })}</span>
@@ -403,16 +516,20 @@ export default function RosterGen() {
           </div>
         </div>
 
-        <div className="bg-white/40 dark:bg-gray-900/40 backdrop-blur-xl border border-white/50 dark:border-gray-700 rounded-2xl overflow-hidden shadow-2xl">
-            <div className="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 py-3 text-center shadow-md">
-               <h2 className="text-white font-bold text-lg tracking-wide">{cycle.startDate.toLocaleString('default', { month: 'long' })} / {cycle.endDate.toLocaleString('default', { month: 'long' })}</h2>
-               <p className="text-[10px] text-white/80 font-mono">{cycle.endDate.getFullYear()}</p>
-            </div>
-            {renderCalendarGrid()}
-        </div>
+        {viewMode === 'calendar' ? (
+          <div className="bg-white/40 dark:bg-gray-900/40 backdrop-blur-xl border border-white/50 dark:border-gray-700 rounded-2xl overflow-hidden shadow-2xl print-hide">
+              <div className="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 py-3 text-center shadow-md">
+                 <h2 className="text-white font-bold text-lg tracking-wide">{cycle.startDate.toLocaleString('default', { month: 'long' })} / {cycle.endDate.toLocaleString('default', { month: 'long' })}</h2>
+                 <p className="text-[10px] text-white/80 font-mono">{cycle.endDate.getFullYear()}</p>
+              </div>
+              {renderCalendarGrid()}
+          </div>
+        ) : (
+          renderTableView()
+        )}
 
-        {!isLocked && (
-          <div className="mt-6 bg-white/80 dark:bg-gray-800/80 rounded-2xl p-4 shadow-lg border border-white/20 dark:border-gray-700">
+        {viewMode === 'calendar' && !isLocked && (
+          <div className="mt-6 bg-white/80 dark:bg-gray-800/80 rounded-2xl p-4 shadow-lg border border-white/20 dark:border-gray-700 print-hide">
             <div className="flex justify-between items-center mb-3">
                <div className="text-[10px] font-bold uppercase text-gray-400">Quick Assign</div>
                <button onClick={() => setSelectedTool(selectedTool === 'eraser' ? null : 'eraser')} className={cn("px-2 py-1 rounded-md border flex items-center gap-1 text-[9px] font-bold transition-all", selectedTool === 'eraser' ? "bg-red-100 border-red-500 text-red-600" : "bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-500")}><Eraser size={12} /> CLEAR</button>
@@ -438,7 +555,7 @@ export default function RosterGen() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 px-1">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 px-1 print-hide">
           <div className="bg-white/80 dark:bg-gray-800/80 rounded-2xl p-4 shadow-lg border border-white/20 dark:border-gray-700">
             <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-100 dark:border-gray-700"><BarChart3 size={16} className="text-purple-500" /><h3 className="text-xs font-black uppercase text-gray-500 tracking-widest">Total Counts</h3></div>
             <div className="space-y-3">
@@ -470,7 +587,7 @@ export default function RosterGen() {
         </div>
 
         {lastUpdated && (
-           <div className="text-center mt-8 text-[9px] font-mono uppercase tracking-widest text-gray-400">
+           <div className="text-center mt-8 text-[9px] font-mono uppercase tracking-widest text-gray-400 print-hide">
               Last Updated: {new Date(lastUpdated).toLocaleString()}
            </div>
         )}
@@ -546,11 +663,23 @@ export default function RosterGen() {
       )}
 
       {/* Footer Nav */}
-      <nav className="fixed bottom-0 w-full bg-white/90 dark:bg-gray-900/90 backdrop-blur-lg border-t border-gray-200 dark:border-gray-800 p-3 z-50 flex justify-around items-center">
+      <nav className="fixed bottom-0 w-full bg-white/90 dark:bg-gray-900/90 backdrop-blur-lg border-t border-gray-200 dark:border-gray-800 p-3 z-50 flex justify-around items-center print-hide">
+        <button onClick={() => setViewMode(viewMode === 'calendar' ? 'table' : 'calendar')} className="flex flex-col items-center gap-1 text-gray-400 hover:text-purple-600">
+           <div className="p-1.5 rounded-full hover:bg-purple-50 transition-colors">
+              {viewMode === 'calendar' ? <Table size={20} /> : <Calendar size={20} />}
+           </div>
+           <span className="text-[9px] font-bold">View</span>
+        </button>
         <button onClick={() => !isLocked && setShowDocManager(true)} className="flex flex-col items-center gap-1 text-gray-400 hover:text-blue-600">
            <div className="p-1.5 rounded-full hover:bg-blue-50 transition-colors"><UserPlus size={20} /></div>
            <span className="text-[9px] font-bold">Staff</span>
         </button>
+        {viewMode === 'table' && (
+          <button onClick={() => window.print()} className="flex flex-col items-center gap-1 text-gray-400 hover:text-amber-600">
+             <div className="p-1.5 rounded-full hover:bg-amber-50 transition-colors"><Printer size={20} /></div>
+             <span className="text-[9px] font-bold">Print</span>
+          </button>
+        )}
         <button onClick={exportCSV} className="flex flex-col items-center gap-1 text-gray-400 hover:text-green-600">
            <div className="p-1.5 rounded-full hover:bg-green-50 transition-colors"><FileText size={20} /></div>
            <span className="text-[9px] font-bold">CSV</span>
