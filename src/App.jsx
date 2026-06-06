@@ -281,9 +281,12 @@ export default function RosterGen() {
       <div className="w-full bg-white dark:bg-gray-900 rounded-2xl overflow-hidden shadow-2xl border border-gray-200 dark:border-gray-800 print:shadow-none print:border-none print-table-container print:rounded-none flex flex-col print:bg-white print:m-0 print:p-0">
         
         {/* Print Header */}
-        <div className="hidden print:block text-center mb-2 mt-0">
-          <h1 className="text-[16pt] font-extrabold text-black tracking-wide" style={{ fontFamily: 'Montserrat, sans-serif' }}>DEPARTMENT OF GENERAL MEDICINE &ndash; OHRC</h1>
-          <h2 className="text-[10pt] text-black mt-1 uppercase font-bold" style={{ fontFamily: 'Montserrat, sans-serif' }}>DUTY ROSTER FOR THE MONTH OF {monthHeader} {yearStr}</h2>
+        <div className="hidden print:flex items-center justify-center gap-4 mb-2 mt-0">
+          <img src="/logo.png" alt="Logo" className="w-12 h-12 object-contain" />
+          <div className="text-center">
+            <h1 className="text-[16pt] font-extrabold text-[#005a32] tracking-wide" style={{ fontFamily: 'Montserrat, sans-serif' }}>DEPARTMENT OF GENERAL MEDICINE &ndash; OHRC</h1>
+            <h2 className="text-[10pt] text-black mt-1 uppercase font-bold" style={{ fontFamily: 'Montserrat, sans-serif' }}>DUTY ROSTER FOR THE MONTH OF {monthHeader} {yearStr}</h2>
+          </div>
         </div>
 
         <table className="w-full text-left print-table" style={{ fontFamily: 'Montserrat, sans-serif' }}>
@@ -309,11 +312,14 @@ export default function RosterGen() {
               const unitStr = isSun ? (getDayUnit(date) === 'Unit 1' ? ' (I)' : (getDayUnit(date) === 'Unit 2' ? ' (II)' : '')) : '';
               
               // Determine row background, separating screen and print explicitly
-              let screenBg = index % 2 !== 0 ? "bg-blue-50/40 dark:bg-blue-900/10" : "bg-white dark:bg-gray-900";
-              let printBg = index % 2 !== 0 ? "print:bg-[#ebf4ff] print:!bg-[#ebf4ff]" : "print:bg-white print:!bg-white"; // Light blue zebra
+              let screenBg = "bg-white dark:bg-gray-900";
+              let printBg = "print:bg-white print:!bg-white";
               
-              if (isSun) {
-                 screenBg = "bg-red-50 dark:bg-red-900/20"; // Light red sunday
+              if ([1, 3, 5].includes(date.getDay())) {
+                 screenBg = "bg-blue-50/60 dark:bg-blue-900/10"; // Light blue for MWF
+                 printBg = "print:bg-[#ebf4ff] print:!bg-[#ebf4ff]";
+              } else if (isSun) {
+                 screenBg = "bg-red-50 dark:bg-red-900/20"; // Light red for Sunday
                  printBg = "print:bg-[#fff0f0] print:!bg-[#fff0f0]";
               }
               
@@ -451,7 +457,7 @@ export default function RosterGen() {
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; font-family: 'Montserrat', sans-serif !important; }
           @page { size: letter portrait; margin: 0; }
           html, body, #root, .print-root { height: auto !important; min-height: 0 !important; margin: 0; padding: 0; background: white !important; background-color: white !important; box-sizing: border-box; }
-          body { padding: 0.4in !important; }
+          body { padding: 0.3in !important; }
           header, nav, .print-hide { display: none !important; }
           main { padding: 0 !important; margin: 0 !important; width: 100% !important; max-width: none !important; display: block; box-sizing: border-box; }
           .print-table { width: 100%; border-collapse: collapse; }
@@ -529,17 +535,19 @@ export default function RosterGen() {
           </div>
         </div>
 
-        {viewMode === 'calendar' ? (
-          <div className="bg-white/40 dark:bg-gray-900/40 backdrop-blur-xl border border-white/50 dark:border-gray-700 rounded-2xl overflow-hidden shadow-2xl print-hide">
+        <div className={cn(viewMode === 'table' ? 'hidden' : 'block', 'print-hide')}>
+          <div className="bg-white/40 dark:bg-gray-900/40 backdrop-blur-xl border border-white/50 dark:border-gray-700 rounded-2xl overflow-hidden shadow-2xl">
               <div className="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 py-3 text-center shadow-md">
                  <h2 className="text-white font-bold text-lg tracking-wide">{cycle.startDate.toLocaleString('default', { month: 'long' })} / {cycle.endDate.toLocaleString('default', { month: 'long' })}</h2>
                  <p className="text-[10px] text-white/80 font-mono">{cycle.endDate.getFullYear()}</p>
               </div>
               {renderCalendarGrid()}
           </div>
-        ) : (
-          renderTableView()
-        )}
+        </div>
+        
+        <div className={cn(viewMode === 'calendar' ? 'hidden print:block' : 'block')}>
+          {renderTableView()}
+        </div>
 
         {viewMode === 'calendar' && !isLocked && (
           <div className="mt-6 bg-white/80 dark:bg-gray-800/80 rounded-2xl p-4 shadow-lg border border-white/20 dark:border-gray-700 print-hide">
@@ -694,12 +702,10 @@ export default function RosterGen() {
            <div className="p-1.5 rounded-full hover:bg-blue-50 transition-colors"><UserPlus size={20} /></div>
            <span className="text-[9px] font-bold">Staff</span>
         </button>
-        {viewMode === 'table' && (
-          <button onClick={() => window.print()} className="flex flex-col items-center gap-1 text-gray-400 hover:text-amber-600">
-             <div className="p-1.5 rounded-full hover:bg-amber-50 transition-colors"><Printer size={20} /></div>
-             <span className="text-[9px] font-bold">Print</span>
-          </button>
-        )}
+        <button onClick={() => window.print()} className="flex flex-col items-center gap-1 text-gray-400 hover:text-amber-600">
+           <div className="p-1.5 rounded-full hover:bg-amber-50 transition-colors"><Printer size={20} /></div>
+           <span className="text-[9px] font-bold">Print</span>
+        </button>
         <button onClick={exportCSV} className="flex flex-col items-center gap-1 text-gray-400 hover:text-green-600">
            <div className="p-1.5 rounded-full hover:bg-green-50 transition-colors"><FileText size={20} /></div>
            <span className="text-[9px] font-bold">CSV</span>
