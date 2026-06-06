@@ -217,15 +217,17 @@ export default function RosterGen() {
 
   const showAssignmentToast = (docId, newAssignments) => {
     let count = 0;
+    let suns = 0;
     cycle.dates.forEach(date => {
       const key = date.toISOString().split('T')[0];
       if ((newAssignments[key] || []).includes(docId)) {
         count++;
+        if (date.getDay() === 0) suns++;
       }
     });
     const doc = doctors.find(d => d.id === docId);
     if (doc) {
-      setToast({ docName: doc.name, count });
+      setToast({ docName: doc.name, count, suns });
       if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
       toastTimeoutRef.current = setTimeout(() => {
         setToast(null);
@@ -538,7 +540,7 @@ export default function RosterGen() {
         <div className="fixed bottom-24 left-0 right-0 z-[100] flex justify-center pointer-events-none animate-fade-in-up">
           <div className="bg-gray-900/95 backdrop-blur-sm text-white px-5 py-2.5 rounded-full shadow-2xl flex items-center gap-3 text-sm font-bold border border-gray-700/50">
             <span className="bg-emerald-500/20 text-emerald-400 p-1 rounded-full"><Check size={14} strokeWidth={3} /></span>
-            <span>{toast.docName} <span className="text-gray-400 font-normal">assigned.</span> Total duties: <span className="text-amber-400 text-base ml-1">{toast.count}</span></span>
+            <span>{toast.docName} <span className="text-gray-400 font-normal">assigned.</span> Total: <span className="text-amber-400 text-base ml-1">{toast.count}</span> {toast.suns > 0 && <span className="text-rose-400 text-xs ml-1">({toast.suns} Sun)</span>}</span>
           </div>
         </div>
       )}
