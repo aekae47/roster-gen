@@ -58,6 +58,7 @@ export default function RosterGen() {
   const [editingDay, setEditingDay] = useState(null);
   const [showDocManager, setShowDocManager] = useState(false);
   const [pickingColorFor, setPickingColorFor] = useState(null); 
+  const [toast, setToast] = useState(null);
 
   const todayDocs = useMemo(() => {
     const d = new Date();
@@ -72,6 +73,7 @@ export default function RosterGen() {
   const docManagerRef = useRef(null);
   const dateEditorRef = useRef(null);
   const loginModalRef = useRef(null);
+  const toastTimeoutRef = useRef(null);
 
   // 1. Initial Load from Cache (Immediate)
   useEffect(() => {
@@ -213,6 +215,24 @@ export default function RosterGen() {
     return { u1, u1S, u2, u2S };
   }, [cycle.dates]);
 
+  const showAssignmentToast = (docId, newAssignments) => {
+    let count = 0;
+    cycle.dates.forEach(date => {
+      const key = date.toISOString().split('T')[0];
+      if ((newAssignments[key] || []).includes(docId)) {
+        count++;
+      }
+    });
+    const doc = doctors.find(d => d.id === docId);
+    if (doc) {
+      setToast({ docName: doc.name, count });
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+      toastTimeoutRef.current = setTimeout(() => {
+        setToast(null);
+      }, 2500);
+    }
+  };
+
   const handleCellClick = (dateObj, dateKey) => {
     if (isLocked) return;
     if (selectedTool === 'eraser') {
@@ -226,6 +246,7 @@ export default function RosterGen() {
         const newAssigns = { ...assignments, [dateKey]: [...current, selectedTool] };
         setAssignments(newAssigns);
         saveToCloud({ assignments: newAssigns });
+        showAssignmentToast(selectedTool, newAssigns);
       }
     } else { setEditingDay({ dateKey, dateObj }); }
   };
@@ -234,8 +255,13 @@ export default function RosterGen() {
     if (!editingDay) return;
     const dateKey = editingDay.dateKey;
     let current = assignments[dateKey] || [];
+    const isAdding = !current.includes(docId) && current.length < 3;
     current = current.includes(docId) ? current.filter(id => id !== docId) : (current.length < 3 ? [...current, docId] : current);
-    setAssignments({ ...assignments, [dateKey]: current });
+    const newAssigns = { ...assignments, [dateKey]: current };
+    setAssignments(newAssigns);
+    if (isAdding) {
+      showAssignmentToast(docId, newAssigns);
+    }
   };
 
   const renderCalendarGrid = () => {
@@ -297,6 +323,11 @@ export default function RosterGen() {
           to { opacity: 1; transform: translateY(0); }
         }
         .animate-fade-in-down { animation: fadeInDown 0.7s ease-out forwards; }
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in-up { animation: fadeInUp 0.3s ease-out forwards; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
@@ -498,6 +529,16 @@ export default function RosterGen() {
                 </div>
              </div>
              <div className="p-3 border-t border-gray-100 dark:border-gray-800"><button onClick={() => { saveToCloud(); setEditingDay(null); }} className="w-full bg-black dark:bg-white text-white dark:text-black py-2 rounded-lg font-bold text-xs uppercase">Done</button></div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed bottom-24 left-0 right-0 z-[100] flex justify-center pointer-events-none animate-fade-in-up">
+          <div className="bg-gray-900/95 backdrop-blur-sm text-white px-5 py-2.5 rounded-full shadow-2xl flex items-center gap-3 text-sm font-bold border border-gray-700/50">
+            <span className="bg-emerald-500/20 text-emerald-400 p-1 rounded-full"><Check size={14} strokeWidth={3} /></span>
+            <span>{toast.docName} <span className="text-gray-400 font-normal">assigned.</span> Total duties: <span className="text-amber-400 text-base ml-1">{toast.count}</span></span>
           </div>
         </div>
       )}
