@@ -61,6 +61,9 @@ export default function RosterGen() {
   const [pickingColorFor, setPickingColorFor] = useState(null); 
   const [toast, setToast] = useState(null);
   const [viewMode, setViewMode] = useState('calendar');
+  const [quickAddInput, setQuickAddInput] = useState('');
+  const [quickAddDocId, setQuickAddDocId] = useState(null);
+  const [quickAddDates, setQuickAddDates] = useState([]);
 
   const todayDocs = useMemo(() => {
     const d = new Date();
@@ -236,6 +239,63 @@ export default function RosterGen() {
       }, 2500);
     }
   };
+
+  // --- Quick Add Logic ---
+  const quickAddSuggestions = useMemo(() => {
+     if (!quickAddInput.trim()) return [];
+     if (!quickAddDocId) {
+        return doctors.filter(d => d.name.toLowerCase().includes(quickAddInput.toLowerCase()) || (d.longName && d.longName.toLowerCase().includes(quickAddInput.toLowerCase()))).slice(0, 5);
+     } else {
+        return cycle.dates.filter(d => d.getDate().toString().startsWith(quickAddInput.trim())).slice(0, 5);
+     }
+  }, [quickAddInput, quickAddDocId, doctors, cycle.dates]);
+
+  const handleQuickAddAssign = () => {
+    if (!quickAddDocId || quickAddDates.length === 0) return;
+    const newAssigns = { ...assignments };
+    quickAddDates.forEach(dateKey => {
+      const current = newAssigns[dateKey] || [];
+      if (!current.includes(quickAddDocId) && current.length < 3) {
+         newAssigns[dateKey] = [...current, quickAddDocId];
+      }
+    });
+    setAssignments(newAssigns);
+    saveToCloud({ assignments: newAssigns });
+    showAssignmentToast(quickAddDocId, newAssigns);
+    setQuickAddDates([]);
+    setQuickAddInput('');
+  };
+
+  const handleQuickAddKeyDown = (e) => {
+     if (!quickAddDocId && e.key === 'Enter') {
+        e.preventDefault();
+        if (quickAddSuggestions.length > 0) {
+           setQuickAddDocId(quickAddSuggestions[0].id);
+           setQuickAddInput('');
+        }
+     } else if (quickAddDocId) {
+        if (e.key === 'Enter' || e.key === ',' || e.key === ' ') {
+           e.preventDefault();
+           if (quickAddInput.trim() === '') {
+              if (e.key === 'Enter' && quickAddDates.length > 0) handleQuickAddAssign();
+              return;
+           }
+           if (quickAddSuggestions.length > 0) {
+              const match = quickAddSuggestions[0];
+              const key = match.toISOString().split('T')[0];
+              if (!quickAddDates.includes(key)) setQuickAddDates([...quickAddDates, key]);
+              setQuickAddInput('');
+           }
+        }
+     }
+  };
+
+  const clearQuickAdd = () => {
+     setQuickAddDocId(null);
+     setQuickAddDates([]);
+     setQuickAddInput('');
+  };
+  // -----------------------
 
   const handleCellClick = (dateObj, dateKey) => {
     if (isLocked) return;
@@ -572,6 +632,73 @@ export default function RosterGen() {
                   </div>
                 )
               })}
+            </div>
+            
+            {/* Quick Add UI */}
+            <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+               <div className="flex justify-between items-center mb-2">
+                 <div className="text-[10px] font-bold uppercase text-gray-400">Quick Add</div>
+                 {quickAddDocId && quickAddDates.length > 0 && (
+                   <button onClick={handleQuickAddAssign} className="text-[9px] font-bold bg-blue-500 text-white px-2 py-0.5 rounded shadow-sm hover:bg-blue-600 transition-colors">ASSIGN ({quickAddDates.length})</button>
+                 )}
+               </div>
+               <div className="relative">
+                 <div className="flex flex-wrap items-center bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-1.5 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 transition-all">
+                    {quickAddDocId && (
+                       <span className="flex items-center gap-1 bg-blue-100 text-blue-800 text-[10px] font-bold px-1.5 py-0.5 rounded m-0.5" style={{ fontFamily: '"PT Sans Narrow"' }}>
+                         {doctors.find(d => d.id === quickAddDocId)?.name}
+                       </span>
+                    )}
+                    {quickAddDates.map(dk => {
+                       const match = cycle.dates.find(d => d.toISOString().split('T')[0] === dk);
+                       const displayStr = match ? `${match.getDate()}` : dk.split('-')[2];
+                       return (
+                         <span key={dk} className="flex items-center gap-1 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-[10px] font-bold px-1.5 py-0.5 rounded m-0.5">
+                           {displayStr}
+                         </span>
+                       );
+                    })}
+                    <input 
+                      type="text" 
+                      value={quickAddInput}
+                      onChange={(e) => setQuickAddInput(e.target.value)}
+                      onKeyDown={handleQuickAddKeyDown}
+                      placeholder={quickAddDocId ? "Type dates (e.g. 14, 18)" : "Type doctor name..."}
+                      className="flex-1 bg-transparent border-none outline-none text-[11px] min-w-[100px] px-1 placeholder-gray-400 text-gray-700 dark:text-gray-300"
+                    />
+                    <button onClick={clearQuickAdd} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full text-gray-400 hover:text-red-500 transition-colors ml-1"><X size={12} /></button>
+                 </div>
+                 {quickAddSuggestions.length > 0 && (
+                    <div className="absolute top-full left-0 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-20 max-h-48 overflow-y-auto">
+                       {quickAddSuggestions.map((s, i) => (
+                          <div 
+                             key={quickAddDocId ? s.toISOString() : s.id} 
+                             onClick={() => {
+                                if (!quickAddDocId) {
+                                   setQuickAddDocId(s.id);
+                                } else {
+                                   const key = s.toISOString().split('T')[0];
+                                   if (!quickAddDates.includes(key)) setQuickAddDates([...quickAddDates, key]);
+                                }
+                                setQuickAddInput('');
+                             }}
+                             className={cn("px-3 py-2 text-[11px] border-b border-gray-100 dark:border-gray-700 last:border-none cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20", i === 0 ? "bg-blue-50/50 dark:bg-blue-900/10" : "")}
+                          >
+                             {quickAddDocId ? (
+                                <span className="font-bold">{s.getDate()} {s.toLocaleString('default', { month: 'short' })} <span className="text-gray-400 font-normal ml-1">({s.toLocaleString('default', {weekday: 'short'})})</span></span>
+                             ) : (
+                                <span className="font-bold">{s.name} <span className="text-gray-400 font-normal ml-1">{s.longName && `(${s.longName})`}</span></span>
+                             )}
+                          </div>
+                       ))}
+                    </div>
+                 )}
+               </div>
+               {!quickAddDocId ? (
+                 <p className="text-[9px] text-gray-400 mt-1 italic pl-1">Type doctor name, hit Enter.</p>
+               ) : (
+                 <p className="text-[9px] text-gray-400 mt-1 italic pl-1">Type date number, hit Space or Comma. Hit Enter to save.</p>
+               )}
             </div>
           </div>
         )}
