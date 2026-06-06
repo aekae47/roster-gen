@@ -306,6 +306,7 @@ export default function RosterGen() {
               const pgs = assignedDocs.filter(d => d.category === 'senior_pg' || d.category === 'junior_pg');
               const isSun = date.getDay() === 0;
               const dayStr = date.toLocaleString('default', { weekday: 'short' });
+              const unitStr = isSun ? (getDayUnit(date) === 'Unit 1' ? ' (I)' : (getDayUnit(date) === 'Unit 2' ? ' (II)' : '')) : '';
               
               // Zebra striping for print: every even row gets a light gray bg
               const printZebra = index % 2 !== 0 ? "print:bg-[#f2f2f2]" : "print:bg-white";
@@ -328,7 +329,7 @@ export default function RosterGen() {
                   {/* Day */}
                   <td className="p-2 align-middle print:py-[2px] print:px-1">
                      <span className={cn("text-[10px] uppercase print:text-[11pt] print:capitalize print:font-sans", isSun ? "text-red-400 font-bold print:text-red-600" : "text-gray-500 print:text-black")}>
-                        {dayStr}
+                        {dayStr}<span className="hidden print:inline">{unitStr}</span>
                      </span>
                   </td>
                   
