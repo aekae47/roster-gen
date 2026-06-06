@@ -301,9 +301,13 @@ export default function RosterGen() {
     if (isLocked) return;
     if (selectedTool === 'eraser') {
       const newAssigns = { ...assignments };
-      delete newAssigns[dateKey];
+      const deletedDocs = newAssigns[dateKey] || [];
+      newAssigns[dateKey] = []; // Use empty array instead of delete so Firebase overwrites it
       setAssignments(newAssigns);
       saveToCloud({ assignments: newAssigns });
+      if (deletedDocs.length > 0) {
+         showAssignmentToast(deletedDocs[0], newAssigns);
+      }
     } else if (selectedTool) {
       const current = assignments[dateKey] || [];
       if (!current.includes(selectedTool) && current.length < 3) {
@@ -319,13 +323,10 @@ export default function RosterGen() {
     if (!editingDay) return;
     const dateKey = editingDay.dateKey;
     let current = assignments[dateKey] || [];
-    const isAdding = !current.includes(docId) && current.length < 3;
     current = current.includes(docId) ? current.filter(id => id !== docId) : (current.length < 3 ? [...current, docId] : current);
     const newAssigns = { ...assignments, [dateKey]: current };
     setAssignments(newAssigns);
-    if (isAdding) {
-      showAssignmentToast(docId, newAssigns);
-    }
+    showAssignmentToast(docId, newAssigns);
   };
 
   const renderTableView = () => {
@@ -666,7 +667,7 @@ export default function RosterGen() {
                       placeholder={quickAddDocId ? "Type dates (e.g. 14, 18)" : "Type doctor name..."}
                       className="flex-1 bg-transparent border-none outline-none text-[11px] min-w-[100px] px-1 placeholder-gray-400 text-gray-700 dark:text-gray-300"
                     />
-                    <button onClick={clearQuickAdd} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full text-gray-400 hover:text-red-500 transition-colors ml-1"><X size={12} /></button>
+                    <button onClick={(e) => { e.preventDefault(); clearQuickAdd(); }} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full text-gray-400 hover:text-red-500 transition-colors ml-1"><X size={12} /></button>
                  </div>
                  {quickAddSuggestions.length > 0 && (
                     <div className="absolute top-full left-0 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-20 max-h-48 overflow-y-auto">
@@ -712,26 +713,27 @@ export default function RosterGen() {
               ))}
             </div>
           </div>
-
-          <div className="bg-white/80 dark:bg-gray-800/80 rounded-2xl p-4 shadow-lg border border-white/20 dark:border-gray-700">
-            <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-100 dark:border-gray-700"><PieChart size={16} className="text-pink-500" /><h3 className="text-xs font-black uppercase text-gray-500 tracking-widest">Faculty Log</h3></div>
-            <div className="space-y-1.5 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-              {doctors.filter(d => d.category === 'faculty').map(doc => {
-                 const dates = cycle.dates.filter(d => (assignments[d.toISOString().split('T')[0]] || []).includes(doc.id)).map(d => d.getDate());
-                 if(dates.length === 0) return null;
-                 const dateString = dates.join(', ');
-                 return (
-                   <div key={doc.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-1.5 rounded-lg text-xs border border-gray-100 dark:border-gray-700">
-                      <div className="flex items-center gap-2 overflow-hidden w-full pr-2">
-                        <span className="font-bold truncate w-24 flex-shrink-0 text-gray-700 dark:text-gray-300" style={{ fontFamily: '"PT Sans Narrow"', fontWeight: 700 }}>{doc.name}</span>
-                        <span className="text-[10px] font-mono text-gray-500 truncate">{dateString}</span>
-                      </div>
-                      <button onClick={() => navigator.clipboard.writeText(`${doc.name}: ${dateString}`)} className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md text-gray-400 hover:text-blue-500 transition-colors flex-shrink-0"><Copy size={14} /></button>
-                   </div>
-                 )
-              })}
+          {viewMode === 'calendar' && (
+            <div className="bg-white/80 dark:bg-gray-800/80 rounded-2xl p-4 shadow-lg border border-white/20 dark:border-gray-700">
+              <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-100 dark:border-gray-700"><PieChart size={16} className="text-pink-500" /><h3 className="text-xs font-black uppercase text-gray-500 tracking-widest">Faculty Log</h3></div>
+              <div className="space-y-1.5 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                {doctors.filter(d => d.category === 'faculty').map(doc => {
+                   const dates = cycle.dates.filter(d => (assignments[d.toISOString().split('T')[0]] || []).includes(doc.id)).map(d => d.getDate());
+                   if(dates.length === 0) return null;
+                   const dateString = dates.join(', ');
+                   return (
+                     <div key={doc.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-1.5 rounded-lg text-xs border border-gray-100 dark:border-gray-700">
+                        <div className="flex items-center gap-2 overflow-hidden w-full pr-2">
+                          <span className="font-bold truncate w-24 flex-shrink-0 text-gray-700 dark:text-gray-300" style={{ fontFamily: '"PT Sans Narrow"', fontWeight: 700 }}>{doc.name}</span>
+                          <span className="text-[10px] font-mono text-gray-500 truncate">{dateString}</span>
+                        </div>
+                        <button onClick={() => navigator.clipboard.writeText(`${doc.name}: ${dateString}`)} className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md text-gray-400 hover:text-blue-500 transition-colors flex-shrink-0"><Copy size={14} /></button>
+                     </div>
+                   )
+                })}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {lastUpdated && (
