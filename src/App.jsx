@@ -72,10 +72,10 @@ export default function RosterGen() {
     if (istDate.getHours() < 9) {
       istDate.setDate(istDate.getDate() - 1);
     }
-    const yyyy = istDate.getFullYear();
-    const mm = String(istDate.getMonth() + 1).padStart(2, '0');
-    const dd = String(istDate.getDate()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
+    // We must return the exact same key format that the app uses for dates (which 
+    // happens to be UTC shifted based on local midnight).
+    const localMidnight = new Date(istDate.getFullYear(), istDate.getMonth(), istDate.getDate());
+    return localMidnight.toISOString().split('T')[0];
   };
 
   const todayDocs = useMemo(() => {
