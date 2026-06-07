@@ -65,10 +65,21 @@ export default function RosterGen() {
   const [quickAddDocId, setQuickAddDocId] = useState(null);
   const [quickAddDates, setQuickAddDates] = useState([]);
 
+  const getDutyCycleKey = () => {
+    const now = new Date();
+    const istTimeString = now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
+    const istDate = new Date(istTimeString);
+    if (istDate.getHours() < 9) {
+      istDate.setDate(istDate.getDate() - 1);
+    }
+    const yyyy = istDate.getFullYear();
+    const mm = String(istDate.getMonth() + 1).padStart(2, '0');
+    const dd = String(istDate.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
   const todayDocs = useMemo(() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    const key = d.toISOString().split('T')[0];
+    const key = getDutyCycleKey();
     const ids = assignments[key] || [];
     return ids.map(id => doctors.find(doc => doc.id === id)).filter(Boolean)
       .sort((a, b) => CATEGORIES[a.category].rank - CATEGORIES[b.category].rank);
@@ -330,7 +341,7 @@ export default function RosterGen() {
   };
 
   const renderTableView = () => {
-    const todayStr = new Date().toDateString();
+    const todayKey = getDutyCycleKey();
     
     // Determine end month if different from start month for the header
     const startMonthStr = cycle.startDate.toLocaleString('default', { month: 'short' }).toUpperCase();
@@ -363,7 +374,7 @@ export default function RosterGen() {
           <tbody>
             {cycle.dates.map((date, index) => {
               const dateKey = date.toISOString().split('T')[0];
-              const isToday = date.toDateString() === todayStr;
+              const isToday = dateKey === todayKey;
               const assignedDocs = (assignments[dateKey] || []).map(id => doctors.find(d => d.id === id)).filter(Boolean);
               
               const fac = assignedDocs.filter(d => d.category === 'faculty');
@@ -452,7 +463,7 @@ export default function RosterGen() {
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     let offset = cycle.dates[0].getDay() - 1;
     if (offset < 0) offset = 6;
-    const todayStr = new Date().toDateString();
+    const todayKey = getDutyCycleKey();
 
     return (
       <div className="grid grid-cols-7 gap-px md:gap-0.5 bg-white/10 dark:bg-black/10">
@@ -464,7 +475,7 @@ export default function RosterGen() {
           const dateKey = date.toISOString().split('T')[0];
           const isSun = date.getDay() === 0;
           const isMWF = [1, 3, 5].includes(date.getDay());
-          const isToday = date.toDateString() === todayStr;
+          const isToday = dateKey === todayKey;
           const assignedDocs = (assignments[dateKey] || [])
             .map(id => doctors.find(d => d.id === id)).filter(Boolean)
             .sort((a, b) => CATEGORIES[a.category].rank - CATEGORIES[b.category].rank);
