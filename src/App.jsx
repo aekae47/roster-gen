@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   UserPlus, Lock, Unlock, Sun, Moon, 
   ChevronLeft, ChevronRight, FileText, 
-  Trash2, Check, X, Eraser, BarChart3, PieChart, Palette, Copy,
+  Trash2, Check, X, Eraser, BarChart3, PieChart, Copy,
   Calendar, Table, Printer
 } from 'lucide-react';
 import { initializeApp } from "firebase/app";
@@ -40,6 +40,28 @@ const db = initializeFirestore(app, {
 });
 const auth = getAuth(app);
 
+const formatDateKey = (date) => {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(date);
+  const year = parts.find(p => p.type === 'year').value;
+  const month = parts.find(p => p.type === 'month').value;
+  const day = parts.find(p => p.type === 'day').value;
+  return `${year}-${month}-${day}`;
+};
+
+const createKolkataDate = (year, month, day) => {
+  return new Date(Date.UTC(year, month, day, 6, 30, 0));
+};
+
+const escapeCSV = (val) => {
+  if (val === null || val === undefined) return '';
+  return String(val).replace(/"/g, '""');
+};
+
 export default function RosterGen() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [doctors, setDoctors] = useState([]);
@@ -67,15 +89,29 @@ export default function RosterGen() {
 
   const getDutyCycleKey = () => {
     const now = new Date();
-    const istTimeString = now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
-    const istDate = new Date(istTimeString);
-    if (istDate.getHours() < 9) {
-      istDate.setDate(istDate.getDate() - 1);
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric', month: 'numeric', day: 'numeric',
+      hour: 'numeric', hour12: false
+    });
+    const parts = formatter.formatToParts(now);
+    let year = parseInt(parts.find(p => p.type === 'year').value, 10);
+    let month = parseInt(parts.find(p => p.type === 'month').value, 10) - 1; // 0-indexed
+    let day = parseInt(parts.find(p => p.type === 'day').value, 10);
+    const hour = parseInt(parts.find(p => p.type === 'hour').value, 10);
+
+    if (hour < 9) {
+      day--;
+      if (day < 1) {
+        month--;
+        if (month < 0) {
+          month = 11;
+          year--;
+        }
+        day = new Date(year, month + 1, 0).getDate();
+      }
     }
-    // We must return the exact same key format that the app uses for dates (which 
-    // happens to be UTC shifted based on local midnight).
-    const localMidnight = new Date(istDate.getFullYear(), istDate.getMonth(), istDate.getDate());
-    return localMidnight.toISOString().split('T')[0];
+    return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   };
 
   const todayDocs = useMemo(() => {
@@ -85,21 +121,24 @@ export default function RosterGen() {
       .sort((a, b) => CATEGORIES[a.category].rank - CATEGORIES[b.category].rank);
   }, [assignments, doctors]);
 
-  // Refs for "Click Outside" logic
-  const docManagerRef = useRef(null);
-  const dateEditorRef = useRef(null);
-  const loginModalRef = useRef(null);
   const toastTimeoutRef = useRef(null);
 
   // 1. Initial Load from Cache (Immediate)
   useEffect(() => {
-    const cached = localStorage.getItem('roster_cache');
-    if (cached) {
-      const { doctors: d, assignments: a, notes: n, lastUpdated: lu } = JSON.parse(cached);
-      setDoctors(d || []);
-      setAssignments(a || {});
-      setNotes(n || {});
-      setLastUpdated(lu || null);
+    try {
+      const cached = localStorage.getItem('roster_cache');
+      if (cached) {
+        const { doctors: d, assignments: a, notes: n, lastUpdated: lu } = JSON.parse(cached);
+        setDoctors(d || []);
+        setAssignments(a || {});
+        setNotes(n || {});
+        setLastUpdated(lu || null);
+      }
+    } catch (err) {
+      console.error("Local cache corrupt, clearing cache:", err);
+      localStorage.removeItem('roster_cache');
+      setToast({ error: true, message: "Local cache corrupt. Resetting cache." });
+      setTimeout(() => setToast(null), 4000);
     }
   }, []);
 
@@ -126,6 +165,10 @@ export default function RosterGen() {
         // Save to LocalStorage for next visit
         localStorage.setItem('roster_cache', JSON.stringify(data));
       }
+    }, (error) => {
+      console.error("Firestore sync failed:", error);
+      setToast({ error: true, message: "Sync failed. Working offline." });
+      setTimeout(() => setToast(null), 4000);
     });
   }, []);
 
@@ -156,35 +199,67 @@ export default function RosterGen() {
   };
 
   const cycle = useMemo(() => {
-    let startMonth = currentDate.getMonth();
-    let startYear = currentDate.getFullYear();
-    if (currentDate.getDate() < 26) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric'
+    }).formatToParts(currentDate);
+    const currentYear = parseInt(parts.find(p => p.type === 'year').value, 10);
+    const currentMonth = parseInt(parts.find(p => p.type === 'month').value, 10) - 1;
+    const currentDay = parseInt(parts.find(p => p.type === 'day').value, 10);
+
+    let startMonth = currentMonth;
+    let startYear = currentYear;
+    if (currentDay < 26) {
       startMonth--;
       if (startMonth < 0) { startMonth = 11; startYear--; }
     }
-    const startDate = new Date(startYear, startMonth, 26);
-    const endDate = new Date(startYear, startMonth + 1, 25);
+
     const dates = [];
-    let curr = new Date(startDate);
-    while (curr <= endDate) {
-      dates.push(new Date(curr));
-      curr.setDate(curr.getDate() + 1);
+    let curYear = startYear;
+    let curMonth = startMonth;
+    let curDay = 26;
+
+    let endMonth = startMonth + 1;
+    let endYear = startYear;
+    if (endMonth > 11) { endMonth = 0; endYear++; }
+
+    while (true) {
+      dates.push(createKolkataDate(curYear, curMonth, curDay));
+      if (curYear === endYear && curMonth === endMonth && curDay === 25) {
+        break;
+      }
+      curDay++;
+      const daysInMonth = new Date(curYear, curMonth + 1, 0).getDate();
+      if (curDay > daysInMonth) {
+        curDay = 1;
+        curMonth++;
+        if (curMonth > 11) {
+          curMonth = 0;
+          curYear++;
+        }
+      }
     }
+
+    const startDate = createKolkataDate(startYear, startMonth, 26);
+    const endDate = createKolkataDate(endYear, endMonth, 25);
+
     return { startDate, endDate, dates };
   }, [currentDate]);
 
   const exportCSV = () => {
     let csv = "Date,Day,Note,Assigned Doctors\n";
     cycle.dates.forEach(date => {
-      const dateKey = date.toISOString().split('T')[0];
-      const dateStr = date.toLocaleDateString();
-      const dayStr = date.toLocaleString('default', { weekday: 'short' });
+      const dateKey = formatDateKey(date);
+      const dateStr = date.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
+      const dayStr = date.toLocaleString('en-US', { weekday: 'short', timeZone: 'Asia/Kolkata' });
       const noteStr = notes[dateKey] || (date.getDay() === 0 ? getDayUnit(date) : "") || "";
       const docs = (assignments[dateKey] || [])
         .map(id => doctors.find(d => d.id === id)?.name)
         .filter(Boolean)
         .join(" & ");
-      csv += `"${dateStr}","${dayStr}","${noteStr}","${docs}"\n`;
+      csv += `"${escapeCSV(dateStr)}","${escapeCSV(dayStr)}","${escapeCSV(noteStr)}","${escapeCSV(docs)}"\n`;
     });
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -194,12 +269,13 @@ export default function RosterGen() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const getDocStatsInCycle = (docId) => {
     let count = 0, suns = 0;
     cycle.dates.forEach(date => {
-      const key = date.toISOString().split('T')[0];
+      const key = formatDateKey(date);
       if ((assignments[key] || []).includes(docId)) {
         count++;
         if (date.getDay() === 0) suns++;
@@ -213,7 +289,7 @@ export default function RosterGen() {
     if (day === 1 || day === 3 || day === 5) return "Unit 1";
     if (day === 2 || day === 4 || day === 6) return "Unit 2";
     if (day === 0) {
-      const ref = new Date(2026, 3, 19); // April 19, 2026 is Unit 1
+      const ref = createKolkataDate(2026, 3, 19); // April 19, 2026 is Unit 1
       const diffWeeks = Math.floor(Math.round((date - ref) / 86400000) / 7);
       return (Math.abs(diffWeeks) % 2 === 0) ? "Unit 1" : "Unit 2";
     }
@@ -235,7 +311,7 @@ export default function RosterGen() {
     let count = 0;
     let suns = 0;
     cycle.dates.forEach(date => {
-      const key = date.toISOString().split('T')[0];
+      const key = formatDateKey(date);
       if ((newAssignments[key] || []).includes(docId)) {
         count++;
         if (date.getDay() === 0) suns++;
@@ -293,7 +369,7 @@ export default function RosterGen() {
            }
            if (quickAddSuggestions.length > 0) {
               const match = quickAddSuggestions[0];
-              const key = match.toISOString().split('T')[0];
+              const key = formatDateKey(match);
               if (!quickAddDates.includes(key)) setQuickAddDates([...quickAddDates, key]);
               setQuickAddInput('');
            }
@@ -340,6 +416,21 @@ export default function RosterGen() {
     showAssignmentToast(docId, newAssigns);
   };
 
+  const handleDeleteDoctor = (docId) => {
+    setDoctors(doctors.filter(d => d.id !== docId));
+    const newAssigns = { ...assignments };
+    let changed = false;
+    Object.keys(newAssigns).forEach(key => {
+      if (newAssigns[key].includes(docId)) {
+        newAssigns[key] = newAssigns[key].filter(id => id !== docId);
+        changed = true;
+      }
+    });
+    if (changed) {
+      setAssignments(newAssigns);
+    }
+  };
+
   const renderTableView = () => {
     const todayKey = getDutyCycleKey();
     
@@ -373,7 +464,7 @@ export default function RosterGen() {
           </thead>
           <tbody>
             {cycle.dates.map((date, index) => {
-              const dateKey = date.toISOString().split('T')[0];
+              const dateKey = formatDateKey(date);
               const isToday = dateKey === todayKey;
               const assignedDocs = (assignments[dateKey] || []).map(id => doctors.find(d => d.id === id)).filter(Boolean);
               
@@ -467,7 +558,7 @@ export default function RosterGen() {
         ))}
         {Array(offset).fill(0).map((_, i) => <div key={`off-${i}`} className="bg-white/50 dark:bg-gray-800/50"/>)}
         {cycle.dates.map(date => {
-          const dateKey = date.toISOString().split('T')[0];
+          const dateKey = formatDateKey(date);
           const isSun = date.getDay() === 0;
           const isMWF = [1, 3, 5].includes(date.getDay());
           const isToday = dateKey === todayKey;
@@ -630,7 +721,7 @@ export default function RosterGen() {
                   <div key={catKey}>
                     <div className={cn("text-[9px] font-black uppercase mb-1.5", CATEGORIES[catKey].color)}>{CATEGORIES[catKey].label}</div>
                     <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
-                      {catDocs.map(doc => (
+                       {catDocs.map(doc => (
                         <button key={doc.id} onClick={() => setSelectedTool(selectedTool === doc.id ? null : doc.id)} style={{ backgroundColor: doc.color + '99' }} className={cn("h-8 min-w-[70px] px-2 rounded-lg border transition-all flex items-center justify-center flex-shrink-0", selectedTool === doc.id ? "border-blue-600 shadow-md transform scale-105" : "border-transparent opacity-90 hover:opacity-100")}>
                           <span className="text-[10px] text-gray-900 line-clamp-1 break-all" style={{ fontFamily: '"PT Sans Narrow", sans-serif', fontWeight: 700 }}>{doc.name}</span>
                         </button>
@@ -650,14 +741,14 @@ export default function RosterGen() {
                  )}
                </div>
                <div className="relative">
-                 <div className="flex flex-wrap items-center bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-1.5 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 transition-all">
+                  <div className="flex flex-wrap items-center bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-1.5 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 transition-all">
                     {quickAddDocId && (
                        <span className="flex items-center gap-1 bg-blue-100 text-blue-800 text-[10px] font-bold px-1.5 py-0.5 rounded m-0.5" style={{ fontFamily: '"PT Sans Narrow"' }}>
                          {doctors.find(d => d.id === quickAddDocId)?.name}
                        </span>
                     )}
                     {quickAddDates.map(dk => {
-                       const match = cycle.dates.find(d => d.toISOString().split('T')[0] === dk);
+                       const match = cycle.dates.find(d => formatDateKey(d) === dk);
                        const displayStr = match ? `${match.getDate()}` : dk.split('-')[2];
                        return (
                          <span key={dk} className="flex items-center gap-1 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-[10px] font-bold px-1.5 py-0.5 rounded m-0.5">
@@ -684,7 +775,7 @@ export default function RosterGen() {
                                 if (!quickAddDocId) {
                                    setQuickAddDocId(s.id);
                                 } else {
-                                   const key = s.toISOString().split('T')[0];
+                                   const key = formatDateKey(s);
                                    if (!quickAddDates.includes(key)) setQuickAddDates([...quickAddDates, key]);
                                 }
                                 setQuickAddInput('');
@@ -724,14 +815,14 @@ export default function RosterGen() {
               <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-100 dark:border-gray-700"><PieChart size={16} className="text-pink-500" /><h3 className="text-xs font-black uppercase text-gray-500 tracking-widest">Faculty Log</h3></div>
               <div className="space-y-1.5 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
                 {doctors.filter(d => d.category === 'faculty').map(doc => {
-                   const dates = cycle.dates.filter(d => (assignments[d.toISOString().split('T')[0]] || []).includes(doc.id)).map(d => d.getDate());
+                   const dates = cycle.dates.filter(d => (assignments[formatDateKey(d)] || []).includes(doc.id)).map(d => d.getDate());
                    if(dates.length === 0) return null;
                    const dateString = dates.join(', ');
                    return (
                      <div key={doc.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-1.5 rounded-lg text-xs border border-gray-100 dark:border-gray-700">
                         <div className="flex items-center gap-2 overflow-hidden w-full pr-2">
-                          <span className="font-bold truncate w-24 flex-shrink-0 text-gray-700 dark:text-gray-300" style={{ fontFamily: '"PT Sans Narrow"', fontWeight: 700 }}>{doc.name}</span>
-                          <span className="text-[10px] font-mono text-gray-500 truncate">{dateString}</span>
+                           <span className="font-bold truncate w-24 flex-shrink-0 text-gray-700 dark:text-gray-300" style={{ fontFamily: '"PT Sans Narrow"', fontWeight: 700 }}>{doc.name}</span>
+                           <span className="text-[10px] font-mono text-gray-500 truncate">{dateString}</span>
                         </div>
                         <button onClick={() => navigator.clipboard.writeText(`${doc.name}: ${dateString}`)} className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md text-gray-400 hover:text-blue-500 transition-colors flex-shrink-0"><Copy size={14} /></button>
                      </div>
@@ -754,7 +845,7 @@ export default function RosterGen() {
       {/* Login Modal */}
       {showLoginModal && (
         <div className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowLoginModal(false)}>
-          <div ref={loginModalRef} onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-gray-900 w-full max-w-sm rounded-2xl shadow-2xl p-6 border border-gray-100 dark:border-gray-800 relative">
+          <div onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-gray-900 w-full max-w-sm rounded-2xl shadow-2xl p-6 border border-gray-100 dark:border-gray-800 relative">
             <button onClick={() => setShowLoginModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X size={20} /></button>
             <h3 className="text-lg font-bold mb-4 text-gray-800 dark:text-gray-100">Admin Login</h3>
             <form onSubmit={handleLogin} className="space-y-4">
@@ -769,7 +860,7 @@ export default function RosterGen() {
       {/* Staff Manager */}
       {showDocManager && (
         <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowDocManager(false)}>
-          <div ref={docManagerRef} onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-gray-900 w-full max-w-sm rounded-2xl shadow-2xl flex flex-col max-h-[85vh] border border-gray-100 dark:border-gray-800 relative">
+          <div onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-gray-900 w-full max-w-sm rounded-2xl shadow-2xl flex flex-col max-h-[85vh] border border-gray-100 dark:border-gray-800 relative">
             {pickingColorFor && (
                <div className="absolute inset-0 z-[70] bg-white/95 dark:bg-gray-900/95 rounded-2xl flex flex-col items-center justify-center p-6"><h3 className="text-sm font-bold uppercase mb-4 text-gray-500">Select Color</h3><div className="grid grid-cols-5 gap-3">{PASTEL_COLORS.map(c => ( <button key={c} style={{backgroundColor: c}} className="w-10 h-10 rounded-full border-2 border-transparent hover:scale-110 shadow-sm transition-all" onClick={() => { setDoctors(doctors.map(d => d.id === pickingColorFor ? {...d, color: c} : d)); setPickingColorFor(null); }} /> ))}</div><button onClick={() => setPickingColorFor(null)} className="mt-6 text-xs font-bold text-gray-400 underline">Cancel</button></div>
             )}
@@ -785,14 +876,14 @@ export default function RosterGen() {
                           <input className="w-full bg-transparent text-[11px] px-2 py-0.5 outline-none font-bold" placeholder="Short Name" style={{ fontFamily: '"PT Sans Narrow"', fontWeight: 700 }} value={doc.name} onChange={(e) => setDoctors(doctors.map(d => d.id === doc.id ? {...d, name: e.target.value} : d))} />
                           <input className="w-full bg-transparent text-[9px] px-2 py-0.5 outline-none text-gray-500" placeholder="Long Name (Optional)" value={doc.longName || ''} onChange={(e) => setDoctors(doctors.map(d => d.id === doc.id ? {...d, longName: e.target.value} : d))} />
                         </div>
-                        <button onClick={() => setDoctors(doctors.filter(d => d.id !== doc.id))} className="absolute right-2 top-3 text-red-400 hover:text-red-600"><Trash2 size={12}/></button>
+                        <button onClick={() => handleDeleteDoctor(doc.id)} className="absolute right-2 top-3 text-red-400 hover:text-red-600"><Trash2 size={12}/></button>
                       </div>
                     ))}
                   </div>
                 </div>
               ))}
             </div>
-            <div className="p-4 border-t border-gray-100 dark:border-gray-800"><button onClick={() => { saveToCloud({ doctors }); setShowDocManager(false); }} className="w-full bg-blue-600 text-white py-2.5 rounded-xl font-bold text-xs uppercase">Save Changes</button></div>
+            <div className="p-4 border-t border-gray-100 dark:border-gray-800"><button onClick={() => { saveToCloud({ doctors, assignments }); setShowDocManager(false); }} className="w-full bg-blue-600 text-white py-2.5 rounded-xl font-bold text-xs uppercase">Save Changes</button></div>
           </div>
         </div>
       )}
@@ -800,7 +891,7 @@ export default function RosterGen() {
       {/* Date Editor */}
       {editingDay && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => {saveToCloud(); setEditingDay(null);}}>
-          <div ref={dateEditorRef} onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-gray-900 w-full max-w-md rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-800 flex flex-col max-h-[90vh]">
+          <div onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-gray-900 w-full max-w-md rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-800 flex flex-col max-h-[90vh]">
              <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50 rounded-t-2xl"><div><h4 className="font-bold text-lg">{editingDay.dateObj.getDate()} {editingDay.dateObj.toLocaleString('default',{month:'short'})}</h4><p className="text-xs text-gray-400 font-bold uppercase">{editingDay.dateObj.toLocaleString('default',{weekday:'long'})}</p></div><button onClick={() => {saveToCloud(); setEditingDay(null);}} className="bg-gray-100 dark:bg-gray-700 p-1 rounded-full"><Check size={18} className="text-green-600"/></button></div>
              <div className="p-4 overflow-y-auto space-y-4">
                 <input className="w-full p-2 bg-gray-50 dark:bg-black border border-gray-200 dark:border-gray-700 rounded-lg text-sm outline-none" placeholder={(editingDay.dateObj.getDay() === 0 ? getDayUnit(editingDay.dateObj) : "") || "Add a note..."} value={notes[editingDay.dateKey] || ''} onChange={(e) => setNotes({...notes, [editingDay.dateKey]: e.target.value})} />
@@ -818,9 +909,21 @@ export default function RosterGen() {
       {/* Toast Notification */}
       {toast && (
         <div className="fixed bottom-24 left-0 right-0 z-[100] flex justify-center pointer-events-none animate-fade-in-up">
-          <div className="bg-gray-900/95 backdrop-blur-sm text-white px-5 py-2.5 rounded-full shadow-2xl flex items-center gap-3 text-sm font-bold border border-gray-700/50">
-            <span className="bg-emerald-500/20 text-emerald-400 p-1 rounded-full"><Check size={14} strokeWidth={3} /></span>
-            <span>{toast.docName} <span className="text-gray-400 font-normal">assigned.</span> Total: <span className="text-amber-400 text-base ml-1">{toast.count}</span> {toast.suns > 0 && <span className="text-rose-400 text-xs ml-1">({toast.suns} Sun)</span>}</span>
+          <div className={cn(
+            "backdrop-blur-sm px-5 py-2.5 rounded-full shadow-2xl flex items-center gap-3 text-sm font-bold border",
+            toast.error ? "bg-red-950/95 text-red-200 border-red-800" : "bg-gray-900/95 text-white border-gray-700/50"
+          )}>
+            {toast.error ? (
+              <>
+                <span className="bg-red-500/20 text-red-400 p-1 rounded-full"><X size={14} strokeWidth={3} /></span>
+                <span>{toast.message}</span>
+              </>
+            ) : (
+              <>
+                <span className="bg-emerald-500/20 text-emerald-400 p-1 rounded-full"><Check size={14} strokeWidth={3} /></span>
+                <span>{toast.docName} <span className="text-gray-400 font-normal">assigned.</span> Total: <span className="text-amber-400 text-base ml-1">{toast.count}</span> {toast.suns > 0 && <span className="text-rose-400 text-xs ml-1">({toast.suns} Sun)</span>}</span>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -833,10 +936,12 @@ export default function RosterGen() {
            </div>
            <span className="text-[9px] font-bold">View</span>
         </button>
-        <button onClick={() => !isLocked && setShowDocManager(true)} className="flex flex-col items-center gap-1 text-gray-400 hover:text-blue-600">
-           <div className="p-1.5 rounded-full hover:bg-blue-50 transition-colors"><UserPlus size={20} /></div>
-           <span className="text-[9px] font-bold">Staff</span>
-        </button>
+        {!isLocked && (
+          <button onClick={() => setShowDocManager(true)} className="flex flex-col items-center gap-1 text-gray-400 hover:text-blue-600">
+             <div className="p-1.5 rounded-full hover:bg-blue-50 transition-colors"><UserPlus size={20} /></div>
+             <span className="text-[9px] font-bold">Staff</span>
+          </button>
+        )}
         <button onClick={() => window.print()} className="flex flex-col items-center gap-1 text-gray-400 hover:text-amber-600">
            <div className="p-1.5 rounded-full hover:bg-amber-50 transition-colors"><Printer size={20} /></div>
            <span className="text-[9px] font-bold">Print</span>
