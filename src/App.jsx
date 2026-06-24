@@ -443,16 +443,11 @@ export default function RosterGen() {
         </table>
 
         {/* Print Footer */}
-        <div className="hidden print:flex justify-between items-end mt-8 pt-4 px-12 pb-2">
-           <div className="text-center">
-             <div className="w-56 border-t border-black mb-1 mx-auto"></div>
-             <p className="font-bold text-[10pt]" style={{ fontFamily: 'Montserrat, sans-serif' }}>DR. MOHD. ABUBABAKAR</p>
-             <p className="text-[10pt]" style={{ fontFamily: 'Montserrat, sans-serif' }}>PROFESSOR & HOD</p>
-           </div>
+        <div className="hidden print:flex justify-end items-end mt-8 pt-4 px-12 pb-2">
            <div className="text-center">
              <div className="w-56 border-t border-black mb-1 mx-auto"></div>
              <p className="font-bold text-[10pt]" style={{ fontFamily: 'Montserrat, sans-serif' }}>DR. SUHAIL BIN AHMED</p>
-             <p className="text-[10pt]" style={{ fontFamily: 'Montserrat, sans-serif' }}>PROFESSOR</p>
+             <p className="text-[10pt]" style={{ fontFamily: 'Montserrat, sans-serif' }}>PROFESSOR & HOD</p>
            </div>
         </div>
       </div>
