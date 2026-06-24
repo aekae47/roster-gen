@@ -487,7 +487,7 @@ export default function RosterGen() {
 
           return (
             <div key={dateKey} onClick={() => handleCellClick(date, dateKey)}
-              className={cn("min-h-[85px] p-0.5 flex flex-col items-center relative transition-all", cellBg, !isLocked && "cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/30", isToday && "ring-2 ring-amber-400 z-10 shadow-lg")}>
+              className={cn("min-h-[85px] p-0.5 flex flex-col items-center relative transition-all border-b border-r border-gray-200/50 dark:border-gray-700/50", cellBg, !isLocked && "cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/30", isToday && "ring-2 ring-amber-400 z-10 shadow-lg")}>
               <span className={cn("text-[15px] leading-none mb-0.5 select-none", isSun ? "text-red-500" : "text-gray-700 dark:text-gray-300")} style={{ fontFamily: '"Archivo Black", sans-serif' }}>
                 {date.getDate()}
               </span>
